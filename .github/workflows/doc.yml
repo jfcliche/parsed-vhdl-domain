@@ -26,6 +26,7 @@ jobs:
 
 
       - name: Run Sphinx
+        run: |
           sphinx-build -M html docs/source public
 
       - name: Deploy Sphinx Pages

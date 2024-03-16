@@ -1,0 +1,9 @@
+*.egg-info
+__pycache__
+.idea
+dist
+public
+docs/.venv*
+docs/build
+*.bak
+build

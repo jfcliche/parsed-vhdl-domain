@@ -16,6 +16,9 @@ dependencies = [
     "vsg @ git+https://github.com/jfcliche/vhdl-style-guide.git@48a0b70"
 ]
 
+[tool.setuptools.package-data]
+mypkg = ["*.css", ".nojekyll"]
+
 [project.optional-dependencies]
 docs = [
     "sphinx",

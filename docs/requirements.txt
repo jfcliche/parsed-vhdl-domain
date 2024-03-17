@@ -1,3 +1,4 @@
 sphinx
 sphinx_rtd_theme
 sphinxcontrib.restbuilder  # used for debugging output
+vsg @ git+https://github.com/jfcliche/vhdl-style-guide.git@48a0b70

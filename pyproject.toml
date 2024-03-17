@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [tool.setuptools.package-data]
-mypkg = ["*.css", ".nojekyll"]
+parsed_vhdl_domain = ["*.css", ".nojekyll"]
 
 [project.optional-dependencies]
 docs = [

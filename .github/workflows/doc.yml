@@ -7,31 +7,31 @@ on:
     branches: [main]
 
 jobs:
-  # build:
-  #   name: Generate Sphinx Pages
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout Repo
-  #       uses: actions/checkout@v2
+  build:
+    name: Generate Sphinx Pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
 
-  #     - name: Setup Python
-  #       uses: actions/setup-python@v2
-  #       with:
-  #         python-version: "3.8"
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.8"
 
-  #     - name: Install package and build docs
-  #       run: |
-  #         pip install -e .
-  #         pip install -r docs/requirements.txt
+      - name: Install package and build docs
+        run: |
+          pip install -e .
+          pip install -r docs/requirements.txt
 
 
-  #     - name: Run Sphinx
-  #       run: |
-  #         sphinx-build -M html docs/source public
+      - name: Run Sphinx
+        run: |
+          sphinx-build -M html docs/source public
 
   deploy:
       name: Deploy generated Sphinx Pages
-      needs: build
+      # needs: build
       permissions:
         pages: write
         id-token: write

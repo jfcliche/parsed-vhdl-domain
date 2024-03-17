@@ -29,3 +29,5 @@ def copy_css_files(app, exc):
         staticdir = os.path.join(app.builder.outdir, '_static')
         print(f'VHDLDomain: copying stylesheet {css_pathfile} to {staticdir}')
         copy_asset_file(css_pathfile, staticdir)
+        nojekyll_pathfile = os.path.join(os.path.dirname(__file__), '.nojekyll')
+        copy_asset_file(nojekyll_pathfile, app.builder.outdir)

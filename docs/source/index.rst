@@ -1,25 +1,25 @@
-parsed-sphinx-vhdl
+parsed-vhdl-domain
 ==================
 
 **parsed-vhdl-domain** is a `Sphinx`_ extension to that facilitates documenting VHDL projects by allowing documentation to be extracted from the code structure and its embedded comment blocks.
+
 
 Installation
 ------------
 
 To install::
 
-    git clone <repo>
-    cd <repo>
-    pip install -e .
+    pip install git+https://github.com/jfcliche/parsed-vhdl-domain.git
 
 
 To build the docs::
 
-    cd docs/
-    pip install -r requirements.txt
+    git clone https://github.com/jfcliche/parsed-vhdl-domain.git
+    pip install -e parsed-vhdl-domain[docs]
+    cd parsed-vhdl-domain/docs
     make html
 
-Then open ``/build/html/index.html`` in a browser.
+Then open ``parsed-vhdl-domain/docs/build/html/index.html`` in a browser.
 
 
 Usage

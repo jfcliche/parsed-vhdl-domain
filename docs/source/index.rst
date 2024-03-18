@@ -15,7 +15,7 @@ To install::
 To build the docs::
 
     git clone https://github.com/jfcliche/parsed-vhdl-domain.git
-    pip install -e parsed-vhdl-domain[docs]
+    pip install -e parsed-vhdl-domain
     cd parsed-vhdl-domain/docs
     make html
 

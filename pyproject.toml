@@ -1,30 +1,31 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
-]
-build-backend = "setuptools.build_meta"
+    requires = [
+        "setuptools>=64", # >=64 required for setuptools-scm
+        "setuptools-scm>=8.0", # automatically manages version number from git
+        "wheel"
+        ]
+    build-backend = "setuptools.build_meta"
 
 [project]
-name = "parsed-vhdl-domain"
-description = "Sphinx domain for VHDL"
-version = "0.1.0"
-authors = [
-    { name = "JF Cliche", email = "vhdl@jfcliche.com" }
-]
-dependencies = [
-    "vsg @ git+https://github.com/jfcliche/vhdl-style-guide.git@48a0b70"
-]
+    name = "parsed-vhdl-domain"
+    description = "Sphinx domain for VHDL"
+    dynamic=["version"]
+    authors = [
+        { name = "JF Cliche", email = "vhdl@jfcliche.com" }
+        ]
+    dependencies = [
+        "sphinx",
+        "sphinx_rtd_theme",
+        "sphinxcontrib.restbuilder",  # used for debugging output
+        "vsg @ git+https://github.com/jfcliche/vhdl-style-guide.git@38bcc20171f2d65c01188e56a275e7f20caa9683"
+        ]
 
 [tool.setuptools.package-data]
-parsed_vhdl_domain = ["*.css", ".nojekyll"]
+    parsed_vhdl_domain = [
+        "*.css",
+        ".nojekyll"
+        ]
 
-[project.optional-dependencies]
-docs = [
-    "sphinx",
-    "sphinx_rtd_theme",
-    "sphinxcontrib.restbuilder"  # used for debugging output
-]
-
-
+[tool.setuptools_scm]
+version_file = "parsed_vhdl_domain/_version.py"
 

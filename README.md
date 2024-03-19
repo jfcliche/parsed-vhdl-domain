@@ -1,7 +1,7 @@
-# parsed-vhdl-domain
+# VHDL-sphinx-domain
 
 
-`parsed-vhdl-domain` is a [sphinx](https://www.sphinx-doc.org/) domain extension that can be used to create rich VHDL project documentation
+`vhdl-sphinx-domain` (VSD) is a [sphinx](https://www.sphinx-doc.org/) domain extension that can be used to create rich VHDL project documentation
 by combining the flexibility of Sphinx with a VHDL parser in order to automatically extract as much documentation as possible
 from the VHDL source code.
 
@@ -14,27 +14,32 @@ Features:
   - Allow integrating any comment block in the VHDL source files, including markdown tables
   - Supports VHDL2008
 
+## Documentation
 
-See also `sphinx-vhdl` which is also an independently created package that also provides directives to auto-document VHDL files.
-(https://cesnet.github.io/sphinx-vhdl/)
+Online documentation can be found in https://jfcliche.github.io/vhdl-sphinx-domain/
 
-## Usage
+## Installation
 
 The python package must be installed with
 ```shell
-######pip3 install sphinx-vhdl
+    pip install git+https://github.com/jfcliche/vhdl-sphinx-domain.git
 ```
-
 The usage of this extension requires Python >= 3.6 and Sphinx >= 4.0.0.
 
-## Configuration
+## Usage
 
 In your sphinx `conf.py` file add
 
 ```python
-extensions = ['parsed_vhdl_domain']
+  extensions = ['vhdl_sphinx_domain']
 ```
 
 ## Repository maintainer
 
  - JF Cliche, vhdl@jfcliche.com
+
+
+## Similar projects
+
+ *  `sphinx-vhdl` (https://cesnet.github.io/sphinx-vhdl/):  provides directives to auto-document VHDL files.
+ * `VHDLDomain` (https://cesnet.github.io/sphinx-vhdl/): Uses pyGHDL as a parser

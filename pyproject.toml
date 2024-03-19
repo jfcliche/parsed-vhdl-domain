@@ -7,7 +7,7 @@
     build-backend = "setuptools.build_meta"
 
 [project]
-    name = "parsed-vhdl-domain"
+    name = "vhdl-sphinx-domain"
     description = "Sphinx domain for VHDL"
     dynamic=["version"]
     authors = [
@@ -21,11 +21,11 @@
         ]
 
 [tool.setuptools.package-data]
-    parsed_vhdl_domain = [
+    vhdl_sphinx_domain = [
         "*.css",
         ".nojekyll"
         ]
 
 [tool.setuptools_scm]
-version_file = "parsed_vhdl_domain/_version.py"
+version_file = "vhdl_sphinx_domain/_version.py"
 

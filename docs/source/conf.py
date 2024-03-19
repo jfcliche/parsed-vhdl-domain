@@ -18,8 +18,7 @@ sys.path.insert(0, os.path.abspath('../../..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'parsed-vhdl-domain'
-# copyright = '2021, Cesnet z.s.p.o.'
+project = 'vhdl-sphinx-domain'
 author = 'JF Cliche'
 
 
@@ -31,14 +30,11 @@ author = 'JF Cliche'
 # ones.
 extensions = [
     'sphinxcontrib.restbuilder',
-    # 'sphinx.ext.todo',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
-    'parsed_vhdl_domain',
-    # 'sphinx_rst_builder'
+    'vhdl_sphinx_domain'
 ]
-# extensions = ['parsed-vhdl-domain']
 
 vhdl_root = os.path.abspath('.')  # starting path to find VHDL files relative to this config file
 

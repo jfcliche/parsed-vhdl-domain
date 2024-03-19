@@ -1,7 +1,7 @@
-parsed-vhdl-domain
+vhdl-sphinx-domain
 ==================
 
-**parsed-vhdl-domain** is a `Sphinx`_ extension to that facilitates documenting VHDL projects by allowing documentation to be extracted from the code structure and its embedded comment blocks.
+**vhdl-sphinx-domain** is a `Sphinx`_ extension to that facilitates documenting VHDL projects by allowing documentation to be extracted from the code structure and its embedded comment blocks.
 
 
 Installation
@@ -9,17 +9,17 @@ Installation
 
 To install::
 
-    pip install git+https://github.com/jfcliche/parsed-vhdl-domain.git
+    pip install git+https://github.com/jfcliche/vhdl-sphinx-domain.git
 
 
 To build the docs::
 
-    git clone https://github.com/jfcliche/parsed-vhdl-domain.git
-    pip install -e parsed-vhdl-domain
-    cd parsed-vhdl-domain/docs
+    git clone https://github.com/jfcliche/vhdl-sphinx-domain.git
+    pip install -e vhdl-sphinx-domain
+    cd vhdl-sphinx-domain/docs
     make html
 
-Then open ``parsed-vhdl-domain/docs/build/html/index.html`` in a browser.
+Then open ``vhdl-sphinx-domain/docs/build/html/index.html`` in a browser.
 
 
 Usage
@@ -31,7 +31,7 @@ Configure your sphinx ``conf.py`` file to include this extension and specify the
 
 .. code-block:: python
 
-  extensions = ['parsed_vhdl_domain']
+  extensions = ['vhdl_sphinx_domain']
   vhdl_root = os.path.abspath('.')
 
 Example

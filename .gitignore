@@ -8,3 +8,4 @@ docs/build
 *.bak
 build
 vhdl_sphinx_domain/_version.py
+.venv*

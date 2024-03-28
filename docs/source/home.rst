@@ -4,7 +4,7 @@ Home page
 
 .. ``vhdl-sphinx-domain`` is a  extension to that facilitates documenting VHDL projects by allowing documentation to be extracted from the code structure and its embedded comment blocks.
 
-``vhdl-sphinx-domain`` (VSD) is a `Sphinx`_ (https://www.sphinx-doc.org/) domain extension that can be
+``vhdl-sphinx-domain`` (VSD) is a `Sphinx`_ domain extension that can be
 used to create rich VHDL project documentation by combining the flexibility of the Sphinx
 documentation system with a VHDL parser that can automatically extract the structure and
 documentation from the VHDL source code.
@@ -14,7 +14,7 @@ Features:
   - Extracts header comments and trailing comments and associates them with their elements
   - Automatically document entities, with their generic and port lists
   - Allow integrating any comment block in the VHDL source files, including markdown tables
-  - Supports VHDL2008
+  - Supports VHDL2008 using the robust VHDL parser that is embedded in the `vhdl-style-guide` package (currently using the forked version at https://github.com/jfcliche/vhdl-style-guide.git).
 
 Installation
 ------------
@@ -28,6 +28,7 @@ To install this package::
 Documentation
 -------------
 
+Online documentation can be found at https://jfcliche.github.io/vhdl-sphinx-domain/
 
 
 To build the docs::
@@ -45,12 +46,19 @@ Usage
 
 Configure your sphinx ``conf.py`` file to include this extension and specify the root path to the VHDL code:
 
-``doc/conf.py``
-
 .. code-block:: python
 
   extensions = ['vhdl_sphinx_domain']
   vhdl_root = os.path.abspath('.')
+
+The VHDL domain then provides the following directives:
+
+- ``:vhdl:parse:: <filename>``: Parses the specified VHDL file and store its contents in the internal project object
+- ``:vhdl:autoentity:: <entity_name>``: Inserts the documentation and list of ports and generics for the specified entity
+- ``:vhdl:include-docs:: <entity_name>``: Inserts the comment lines from the file that defined the
+  specified entity, starting and ending with the lines that matches the keywords specified as
+  directive options.
+
 
 Examples
 --------
@@ -94,45 +102,17 @@ Memory Map extracted from a comment block
 How it works
 ------------
 
+This is a summary of how the domain works:
+
+- Tokenize the source file with a VHDL parser. We use ``vhdl-style-guide`` parser.
+- Post-process the token list to extract the main language elements (entities, ports, architecture) in to a
+  hierarchical linked list (using ``xml.etree.ElementTree``)
+- Post-process the tree to group comment consecutive comment lines into comment blocks, and move comment blocks preceding and trailing each language element into that element's node.
+- Extracts entities, interface lists etc into a easy to access hiearchical dictionary using the simple `xpath` search parameters to lookup elements in the tree.
+- Store the intormation in the VHDL parser instance
+- When directives and roles are invoked,
 
 
 
-
-
-.. ---------
-.. TOC
-.. ---------
-
-.. .. toctree::
-..    :maxdepth: 2
-..    :caption: Contents:
-
-..    self
-..    API reference <_autosummaries/vhdl_sphinx_domain>
-
-
-
-.. Indices and tables
-.. ==================
-
-.. * :ref:`genindex`
-.. * :ref:`search`
-
-.. .. tssoctree::
-..     :caption: Contents:
-..     :maxdepth: 2
-
-
-..     api
-
-
-.. :titlesonly:
-.. :includehidden:
-
-   autoapi/index
-
-
-
-.. api
 
 .. _Sphinx: https://www.sphinx-doc.org

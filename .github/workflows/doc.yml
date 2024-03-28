@@ -17,6 +17,8 @@ jobs:
         url: ${{ steps.deployment.outputs.page_url}}
       runs-on: ubuntu-latest
       steps:
+        - run: git version
+        - run: git describe
         - id: deployment
           uses: sphinx-notes/pages@v3
           with:

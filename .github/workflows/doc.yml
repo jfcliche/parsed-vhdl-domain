@@ -17,12 +17,17 @@ jobs:
         url: ${{ steps.deployment.outputs.page_url}}
       runs-on: ubuntu-latest
       steps:
+        - id: checkout
+          uses: actions/checkout@v2
+          with:
+            fetch-depth: 0
         - id: deployment
           uses: sphinx-notes/pages@v3
           with:
             documentation_path: ./docs/source
+            checkout: false
         - run: pwd
         - run: git tag
         - run: git version
         - run: git describe
-        - run: git log
+        # - run: git log

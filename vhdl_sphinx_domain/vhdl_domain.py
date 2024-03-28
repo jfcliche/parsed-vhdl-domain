@@ -1,46 +1,52 @@
 """
-VHDLDomain Sphinx class implementation
-
+Implements the Sphinx VHDL Domain and roles
 """
+
+# System packages
+
 import os
 
-from docutils import nodes, utils
+# Pypi packages
+
+from docutils import nodes
 from docutils.parsers.rst import directives
-from docutils.utils.code_analyzer import Lexer, LexerError
-from docutils.statemachine import ViewList
+from docutils.utils.code_analyzer import LexerError
 
-from sphinx import addnodes
 from sphinx.roles import XRefRole
-# from sphinx.locale import l_, _
 from sphinx.domains import Domain, ObjType
-from sphinx.domains.std import Target
 from sphinx.directives import ObjectDescription
-from sphinx.util import ws_re
-from sphinx.util.nodes import clean_astext, make_refnode, nested_parse_with_titles
-from sphinx.util.docfields import Field, GroupedField, TypedField
+from sphinx.util.nodes import make_refnode
 
-from .vhdl_parser import VHDLFiles
+# Local packages
 
-__version__ = '1.0'
-
+from .vhdl_parser import VHDLParser
+from . import doc_utils
 
 
-class VHDLObjectDirectiveBase(ObjectDescription):  # which inherits from docutil's Directive
+class VHDLDirective(ObjectDescription):  # which inherits from docutil's Directive
     """
-    A generic directive that is to be used as a base class for directives documenting VHDL elements such as Entity. Architecture etc.
+    A generic directive that is to be used as a base class for directives documenting VHDL elements such as Entity, Architecture etc.
     This class offers:
 
-        - x-ref directive registered with Sphinx.add_object_type().
+    - x-ref directive registered with Sphinx.add_object_type().
 
-    Usage:
-        DomainObject = type('DomainObject', (GenericObject, object), dict(
-            domain = 'my-domain-name'))
+    The following attributes are commonly used:
 
-        DomainObject = type('DomainObject', (GenericObject, object), dict(
-            domain = 'my-domain-name', indextemplate=(
+    - data (Object): The VHDLDomain associated data. Convenient shortcut for
+      ``self.env.domaindata['vhdl']``. Initialized at instatiation. Must be picklable, as Sphinx
+      saves it to disk for each processed file.
 
-        class MyDescriptionObject(GenericObject):
+    - vhdl_parser (VHDLParser): Represent the VHDLDomain's VHDL parser object, which holds the
+      results of all parsed files. Attribute initialized at instantiation.
 
+    - name (str): full name of the directive (e.g. ``vhdl:autoentity``) (initialized by
+      :meth:`run()`)
+
+    - objtype (str): type of object being handled by the directive (entity, architecture etc),
+      extracted from `name` (initialized by :meth:`run()`)
+
+    - domain (str): name of the domain fir this directive. Extracted from `name`. (initialized by
+      :meth:`run()`)
     """
     indextemplate = '%s; entity'
     # parse_node = None
@@ -48,37 +54,67 @@ class VHDLObjectDirectiveBase(ObjectDescription):  # which inherits from docutil
     required_arguments = 1
     has_content = True
 
-    def get_signatures(self):
-        """
-        Retrieve the signatures to document from the directive arguments.  By
-        default, signatures are given as arguments, one per line.
 
-        Returns a list of signatures
+    def __init__(self, name, arguments, options, *args):
+        """ Initializes the VHDL directive by creating the ``.data`` and ``.vhdl_parser`` attributes that point to the domain data nd parser respectively.
+
+        Parameters:
+
+            name (str): name of the directive
+            argument (list): list of arguments following the directive
+            options (dict): keyword options and values provided to the directive
+            args (list): other arguments, passed to the class parent
+
+        :meta no_show_inheritance:
         """
-        return self.arguments
+
+        super().__init__(name, arguments, options, *args)
+        self.data = self.env.domaindata[VHDLDomain.name]
+        self.vhdl_parser = self.env.domains[VHDLDomain.name].vhdl_parser
+
 
     def handle_signature(self, sig, signode):
-        signode += nodes.paragraph('', '%s %s' % (self.objtype.upper(), sig))
+        """Parse the signature `sig` into individual nodes and append them to
+        `signode`.
+
+        Parameters:
+
+            sig (str): signature of the directive
+
+            signode (list): list of nodes to which the signature should be added
+
+
+        Returns:
+
+            str: value that identifies the object, which will be passed to :meth:`add_target_and_index()`.
+        """
+        signode += nodes.paragraph('', f'{self.objtype.upper()} {sig}')
+        print(f'Processing signature {sig} into {signode}')
         return sig.lower()  # make all references lowercase so we we are not case sensitive
 
 
     def add_target_and_index(self, name, sig, signode):
         """
-        Arguments:
-            name : value returned by handle_signature()
-            sig: signature item obtained from get_signature()
-            signode: signature node being populated
-        References:
-            self.objtype (str): the type of object (entity, architecture etc.) to be used to crate the entry in the cross reference table.
-            self.link_to_top (boolean): if true, the ling will point to the top of the page, otherwise it will point to this entry
-            self.domain (str): the current domain name (e.g. VHDL)
-            self.env.domaindata[self.domain]['objects']: The cross_reference dictionary for this domain, indexed by (type,name), pointing to (document_name, target_name)
+        Parameters:
+
+            name : value that identifies the object. This is the value returned by handle_signature().
+
+            sig (list): signatures (list of strings) obtained from get_signature().
+
+            signode (list): signature node that we will be referring to
+
+        Attributes used in this method:
+
+        - self.objtype (str): the type of object (entity, architecture etc.) to be used to crate the entry in the cross reference table.
+        - self.link_to_top (boolean): if true, the ling will point to the top of the page, otherwise it will point to this entry
+        - self.domain (str): the current domain name (e.g. VHDL)
+        - self.data['objects']: The cross_reference dictionary for this domain, indexed by (type,name), pointing to (document_name, target_name)
         """
         self.link_to_top = True
         if self.link_to_top:
             targetname = 'top'
         else:
-            targetname = '%s-%s' % (self.objtype, name)
+            targetname = f'{self.objtype}-{name}'
             signode['ids'].append(targetname)
         self.state.document.note_explicit_target(signode)
         if self.indextemplate:
@@ -91,86 +127,56 @@ class VHDLObjectDirectiveBase(ObjectDescription):  # which inherits from docutil
                 indexentry = self.indextemplate % (name,)
             self.indexnode['entries'].append((indextype, indexentry,
                                               targetname, '', None)) # Added 5th element for Sphinx 1.8
-        objects = self.env.domaindata[self.domain]['objects']
-        print(('VHDL Domain: add_target_and_index: adding', self.objtype, name, self.env.docname, targetname))
+        objects = self.data['objects']
+        print(f'VHDL Domain: add_target_and_index: adding object type {self.objtype} named {name}, docname={self.env.docname}, targetname={targetname}')
         objects[self.objtype, name] = self.env.docname, targetname
 
+
     def run(self):
-        # Extract the domain name (e.g. VHDL) and the object type from the complete directive name
-        if ':' in self.name:
-            self.domain, self.objtype = self.name.split(':', 1)
-        else:
-            self.domain, self.objtype = '', self.name
+        """ Process the directive.
+
+        We update the name of the object by removing the `auto` prefix, run the parent :py:meth:`run()` method,  and then
+        add additional contents provided by :py:meth:`add_contents()`.
+
+            Attributes used in this method:
+
+        - name (str): full name of the directive, with domain prefix (e.g. ``vhdl:autoentity``)
+        """
         # Remove a leading `auto` from the directive name to get the real type
-        if self.objtype.startswith('auto'):
-            self.objtype = self.objtype[4:]
+        self.name = self.name.replace(':auto',':')
+        nodes = super().run()
+        n = self.add_contents()  # use self.names to know the names of objects
+        return nodes + n
 
-        # print dir(self.state.document.settings.env)
-        # self.env = self.state.document.settings.env  # now included in SphinxDirective since 1.8.0
-        self.indexnode = addnodes.index(entries=[])
+    def add_contents(self):
+        """ Appends content nodes to the directive output. To be overriden by the object-specific directive.
 
-        # Create a container node desc() to contain the whole contents of this directive.
-        # This node has no text by itself. All the text is contained by children.
-        node = addnodes.desc()
-        node.document = self.state.document
-        node['domain'] = self.domain
-        # 'desctype' is a backwards compatible attribute
-        node['objtype'] = node['desctype'] = self.objtype
-        node['noindex'] = noindex = ('noindex' in self.options)
+        This is `VHDLDirective`-specific method.
 
-        self.names = []
-        for sig in self.get_signatures():
-            # add a signature node for each signature in the current unit
-            # and add a reference target for it
-            signode = addnodes.desc_signature(sig, '', classes=['vhdl_entity_title'])
-            signode['first'] = False
-            node.append(signode)
-            try:
-                # name can also be a tuple, e.g. (classname, objname);
-                # this is strictly domain-specific (i.e. no assumptions may
-                # be made in this base class)
-                name = self.handle_signature(sig, signode) # populate the signature node, and return the name used to refer to it
-            except ValueError:
-                # signature parsing failed
-                signode.clear()
-                signode += addnodes.desc_name(sig, sig)
-                continue  # we don't want an index entry here
-            if name not in self.names:
-                self.names.append(name)
-                if not noindex:
-                    # only add target and index entry if this is the first
-                    # description of the object with this name in this desc block
-                    self.add_target_and_index(name, sig, signode)
 
-        contentnode = addnodes.desc_content()
-        node.append(contentnode)
-        # if self.names:
-        #     # needed for association of version{added,changed} directives
-        #     self.env.temp_data['object'] = self.names[0]
-        # self.before_content()
-        # self.state.nested_parse(self.content, self.content_offset, contentnode)
-        # DocFieldTransformer(self).transform_all(contentnode)
-        # self.env.temp_data['object'] = None
-        # self.after_content()
-        n = self.add_contents(contentnode)  # use self.names to know the names of objects
-        return [self.indexnode, node] + n
+        Returns:
 
-    def add_contents(self, contentnode):
-        """ Add the contents to the directive output. To be overriden by the object-specific directive"""
+            list: list of docutils nodes to be appended to the output of `run()`.
+        """
         return []
 
 
-class VHDLIncludeDirective(ObjectDescription):
+class VHDLIncludeDirective(VHDLDirective):
     """ Includes a specified range of VHDL comment lines in this document as restructuredText or MarkDown
 
-    Parameters:
+    Directive argument: The entity name in which file the comment lines will searched and extracted from
 
-        start_before (str): start including text from the comment line containing the specified string
-        start_after (str): start including text from the comment line following the line containing the specified string
-        start_before (str): stop including text before the comment line contining the specified string
-        start_after (str): stop including text on the comment line contining the specified string
+    Directive options:
 
-    ..VHDL:include: entity_name
+    - start_before (str): start including text from the comment line containing the specified string
+    - start_after (str): start including text from the comment line following the line containing the specified string
+    - start_before (str): stop including text before the comment line contining the specified string
+    - start_after (str): stop including text on the comment line contining the specified string
+
+    Example::
+
+        ..vhdl:include:: GPIO
+            :start-after: Memory Map
 
     """
     required_arguments = 1
@@ -182,362 +188,120 @@ class VHDLIncludeDirective(ObjectDescription):
         'end-after': lambda x: x,
     }
 
-    def __init__(self,
-                 directive,
-                 arguments,  # arguments passed after the directive
-                 options, # Additional keyword arguments
-                 content, #
-                 lineno,            # ignored
-                 content_offset,    # ignored
-                 block_text,        # ignored
-                 state,
-                 state_machine,     # ignored
-                ):
+    def __init__(self, name, arguments, options, *args):
+        """ Create and initialize a directive object instance.
 
+        Parameters:
+
+            name (str): name of the directive
+
+            arguments (str): arguments passed after the directive (i.e. the signature, ``<directive_name>: <arguments>``)
+
+            options (dict): options passed to the directive (i.e. ``:<option_name>: <option_value>``)
+
+            *args: All other options passed to the parent's __init__
+        """
+        super().__init__(name, arguments, options, *args)
+
+        print(f'Creating directive object named {self.name}, arg={self.arguments}, opt={self.options}')
+        # Store the arguments and options specified with the directive. Those will be used by run()
         self.entity = arguments[0] # file name
         self.search_params = dict(
             start_before = options.get('start-before', None),
             start_after = options.get('start-after', None),
             end_before = options.get('end-before', None),
             end_after = options.get('end-after', None))
-        self.state = state
 
     def run(self):
-
-        lines = vhdl_parser.get_comments(self.entity, **self.search_params)
+        print(f'Running vhdl:include with domain = {self.domain}, data={self.env.domains}')
+        # parser = self.env.domaindata[VHDLDomain.name]['parser']
+        lines = self.vhdl_parser.get_comments(self.entity, **self.search_params)
         if not lines:
             raise RuntimeError(f'Did not find any comment matching the search criteria in {self.entity}')
-        return parse_comment_block(self.state, lines)
+        # print(f'** Inserting comment block for entity {self.entity}')
+        # print('\n'.join(lines))
+        # print('******* End of comment clock *****')
+        return doc_utils.parse_comment_block(self.state, lines)
 
-class VHDLParseDirective(ObjectDescription):
+class VHDLParseDirective(VHDLDirective):
     """ Loads and parse the specified VHDL file.
+
     The parse results are stored in the `vhdl_parser` object for reference by other directives.
+
+    Directive arguments: vhdl_file_name
+
+    Directive options: None
     """
     required_arguments = 1
     has_content = False
 
-    def __init__(self, directive, arguments, options, content, lineno, content_offset, block_text,
-                 state, state_machine):
+    def __init__(self, name, arguments, options, *args):
+        """ Initialize the directive by extracting the directive argument.
+        """
+        super().__init__(name, arguments, options, *args)
 
-        env = state.document.settings.env
-        vhdl_root_folder = env.config.vhdl_root
+        # Store the full filename of the VHDL file given as a directive argument by prepending the
+        # root VHDL folder found in the config file. This will be used in `run()`.
+        vhdl_root_folder = self.config.vhdl_root
         self.vhdl_filename = os.path.join(vhdl_root_folder, arguments[0])
 
     def run(self):
-        vhdl_parser.parse_file(self.vhdl_filename)
-        return []
-
-def parse_rest(state, lines, class_dict={}):
-    """ Parse a list of lines into a list of docutil nodes.
-    Nodes are not part of a top object so sections found in the parsed text can be mede part of the parent hierarchy.
-    User-specified classes can be applied to objects specified in `class_dict`.
-
-    Parameters:
-
-        state:
-
-        lines (list of str): text to be parsed
-
-        class_dict (dict): Dict in the format {object_type:class_name,...} or {object_type:[class_name, class_name...],...} that applies the specified ``class_name`` to the objects generated by the REST parser that have the tag ``object_type``
-
-    Returns:
-        - A list containing docutil nodes
-
-    """
-    if not lines: return []
-    container_node = nodes.paragraph('','')
-    nested_parse_with_titles(state, ViewList(lines, source=''), container_node)
-    for n in container_node:
-        if n.tagname in class_dict:
-            # print '*** Updating class on object:', n.tagname
-            if isinstance(class_dict[n.tagname], str):
-                n['classes'].append(class_dict[n.tagname])
-            else:
-                n['classes'].extend(class_dict[n.tagname])
-    return list(container_node)
-
-
-def parse_markdown_table(state, rows, pos):
-    """ Attempts to decode a block of text as a markdown table
-
-    Returns:
-
-        (tuple or None):
-            (new position, docutils_table_node) if a markdown table was found
-            `None` if there is no markdown table at this location.
-    """
-
-    # Define some helper functions first
-    def split_row(rows, pos):
-        if pos >= len(rows):
-            return []
-        e = [s.strip() for s in rows[pos].strip().split('|')]
-        if len(e) < 2:
-            return []
-        if not e[0]:
-            del e[0]
-        if not e[-1]:
-            del e[-1]
-        return e
-
-    def build_row(entries, alignment):
-        # return nodes.row('', *[nodes.entry('', nodes.inline('', e)) for e in entries])
-        node_list = []
-        for i, e in enumerate(entries):
-            n = parse_rest(state, [e])
-            # print '********** Element node = ', n
-            entry = nodes.entry('', *n)
-            if i < len(alignment) and alignment[i]:
-                entry['classes'].append(alignment[i])
-            node_list.append(entry)
-        return nodes.row('', *node_list)
-
-    def max_column_widths(*rows):
-        widths = [0] * max(len(r) for r in rows)
-        for row in rows:
-            for i, entry in enumerate(row):
-                widths[i] = max(widths[i], len(entry))
-        return widths
-
-    # Parsing starts here
-    # print 'parsing Markdown table'
-    if rows[pos].strip().startswith('---'):  # if we have a top fence, skip it
-        pos += 1
-    headers = split_row(rows, pos)  # attempt to decode the header row
-    if not headers:
-        return # if unsuccessful, this is not a markdown table
-    # print 'header=', headers
-    pos += 1
-    separators = split_row(rows, pos)
-    if not separators:
-        return  # bad separators = not a markdown table = give up
-    # print 'separator=', separators
-    pos += 1
-    row_entries = []
-    while pos < len(rows):
-        entries = split_row(rows, pos)
-        # print 'row=', entries
-        if not entries:
-            break
-        row_entries.append(entries)
-        pos += 1
-    if not row_entries: return # no rows? give up, not a markdon table
-    print(('We have %i header columns, %i separator coulmns, %s row columns' % (len(headers), len(separators), ','.join('%i' % len(r) for r in row_entries))))
-    widths = max_column_widths(headers, separators, *row_entries)
-    cols = len(widths)
-
-    # print '*** widths=', widths
-
-    table = nodes.table()
-    tgroup = nodes.tgroup('', cols=cols)
-    table += tgroup
-
-    align = []
-    for i, sep in enumerate(separators):
-        if sep.startswith(':') and sep.endswith(':'):
-            align.append('align-center')
-        elif sep.startswith(':'):
-            align.append('align-left')
-        elif sep.endswith(':'):
-            align.append('align-right')
-        else:
-            align.append(None)
-        tgroup += nodes.colspec(colwidth=widths[i])
-
-    thead = nodes.thead()
-    tgroup += thead
-
-    tbody = nodes.tbody()
-    tgroup += tbody
-    # print '*********** building table header'
-    assert len(headers) == cols, 'Headers has invalid number of columns. We expected %i columns, but got got headers: %s' % (cols, ','.join(headers))
-    thead += build_row(headers, align)
-    for r in row_entries:
-        assert len(r) == cols, 'Row has invalid number of columns'
-        tbody += build_row(r, align)
-    return pos, table
-
-def parse_comment_block(state, lines, class_dict={}):
-    """ Parse a block of ReStructuredText text potentially containing Markdown tables into a node list.
-
-    Arguments:
-        - state: parser state to be passed to the REST parser
-        - lines (list of str): text to be parsed
-        - class_dict (dict): classes to be applied to the REST blocks
-
-    Returns:
-        - Docutils node list
-    """
-    pos = 0
-    rest_lines = []
-    node_list =[]
-
-    while pos < len(lines):
-        markdown_table = parse_markdown_table(state, lines, pos)
-        # print '*** Markdown table=', markdown_table
-        if markdown_table:
-            print('VHDL Domain: A Markdown table was detected, parsed and added')
-            node_list += parse_rest(state, rest_lines, class_dict)
-            rest_lines = []
-            (next_pos, table_node) = markdown_table
-            # print 'Markdown table nodes = ', table_node
-            node_list.append(table_node)
-            pos = next_pos
-        else:
-            rest_lines.append(lines[pos])
-            pos += 1
-
-    node_list += parse_rest(state, rest_lines, class_dict)
-    return node_list
-
-
-def make_vhdl_entity_table(generics, ports):
-        """ Create a table that describes the ports and generics of a VHDL entity.
+        """ Executes the directive by parsing the specified filename and storing the result in the domain's parser object for future references.
 
         Returns:
-
-            a Docutils table.
-
-        Notes:
-
-            The table is structured as follows:
-
-                table
-                    -tgroup
-                        -colspec
-                        (-thead)
-                        (   -row)
-                        (       -entry)
-                        -tbody
-                            -row
-                                -entry
-                                -entry
-                                -...
-                            -row
-                            -...
+            list: list of nodes to add to the document. In this case, this is an empty list.
         """
-        COLS = 2
-        table = nodes.table(classes=['vhdl_entity'])
-        colspec_nodes = [nodes.colspec(colwidth=0)]*(COLS-1) + [nodes.colspec(colwidth=1)]
-        tgroup = nodes.tgroup('', *colspec_nodes, cols=len(colspec_nodes))
-        table += tgroup
-        tbody = nodes.tbody()
-        tgroup += tbody
+        # print(f'state={dir(self.state.document)}')
+        # parser = self.env.domaindata[VHDLDomain.name]['parser']
+        self.vhdl_parser.parse_file(self.vhdl_filename)
+        return []
 
-        def add_header(name, tbody=tbody):
-            tbody += nodes.row('', nodes.entry('', nodes.paragraph('','', nodes.Text(name)), morecols=COLS-1), classes=['vhdl_entity_header'])
 
-        def add_rows(interface_elements, tbody=tbody):
-            """ Add a port/generic entries to `tbody` """
-            for i, interface in enumerate(interface_elements):
-                identifier = ','.join(interface.names)
-                definition = interface.definition
-                comments = interface.comments
-                def_row_class = ('vhdl_entity_def_even', 'vhdl_entity_def_odd')[i & 1]
-                comments_node = nodes.inline('',comments)
-                # print repr(identifier), bool(identifier)
-                if not identifier:  # if just a section separating comment
-                    tbody += nodes.row('',
-                        nodes.entry('', comments_node, morecols=1, classes=['vhdl_entity_sep']),
-                        # nodes.entry(''), #
-                        classes=[def_row_class])
-                else: # if an actual port definition
-                    identifier_node = make_lexed_vhdl_node(identifier + ':')
-                    definition_node = make_lexed_vhdl_node(definition)
-                    tbody += nodes.row('',
-                        nodes.entry('', identifier_node, classes=['vhdl_entity_id']), #
-                        nodes.entry('', definition_node, comments_node, classes=['vhdl_entity_def']), classes=[def_row_class])
+class VHDLEntityDirective(VHDLDirective):
+    """ Insert the entity brief description, generics/ports table and long description
 
-        # print generics
-        if generics:
-            add_header('GENERICS')
-            add_rows(generics)
-            # print(f'Adding generics {generics}')
-        if ports:
-            add_header('PORTS')
-            add_rows(ports)
-        return table
+        Directive arguments: vhdl_entity_name
 
-class VHDLEntityDirective(VHDLObjectDirectiveBase):
-    """ Insert the entity brief description, generics/ports table and long description"""
-    def add_contents(self, node):
+        Directive options: None
+    """
+    def add_contents(self):
+        """ Adds the entity's short description, generics and port interface table, and long description nodes to the directive's output
+
+        Returns:
+            list: list of nodes to add
+        """
         entity_name = self.names[0]  # value returned by handle_signature
-        entity = vhdl_parser.get_entity(entity_name)
-        brief_nodes = parse_comment_block(self.state, entity.brief, class_dict=dict(section='vhdl_entity_brief'))
-        details_nodes = parse_comment_block(self.state, entity.details, class_dict=dict(section='vhdl_entity_details'))
-        table_node = make_vhdl_entity_table(generics=entity.generics, ports=entity.ports)
+        # parser = self.env.domaindata[VHDLDomain.name]['parser']
+        # parser = self.env.domaindata[VHDLDomain.name]['parser']
+        entity = self.vhdl_parser.get_entity(entity_name)
+        brief_nodes = doc_utils.parse_comment_block(self.state, entity.brief, class_dict=dict(section='vhdl_entity_brief'))
+        details_nodes = doc_utils.parse_comment_block(self.state, entity.details, class_dict=dict(section='vhdl_entity_details'))
+        table_node = doc_utils.make_vhdl_entity_table(generics=entity.generics, ports=entity.ports)
         return brief_nodes + [table_node] + details_nodes
 
 
-class Test(ObjectDescription):
-    """
-    """
-    required_arguments = 0
-    has_content = True
-
-    def build_table_from_list(self, table_data, col_widths, header_rows, stub_columns):
-        table = nodes.table()
-        tgroup = nodes.tgroup(cols=len(col_widths))
-        table += tgroup
-        for col_width in col_widths:
-            colspec = nodes.colspec(colwidth=col_width)
-            if stub_columns:
-                colspec.attributes['stub'] = 1
-                stub_columns -= 1
-            tgroup += colspec
-        rows = []
-        for row in table_data:
-            row_node = nodes.row()
-            for cell in row:
-                entry = nodes.entry()
-                # cell = [nodes.paragraph(nodes.Text(str(cell)))]
-                # cell = nodes.paragraph(str(cell), str(cell))
-                # print 'cell is', cell
-                # entry += nodes.paragraph(nodes.Text(str(cell)))
-                entry += cell
-                row_node += entry
-            rows.append(row_node)
-        if header_rows:
-            thead = nodes.thead()
-            thead.extend(rows[:header_rows])
-            tgroup += thead
-        tbody = nodes.tbody()
-        tbody.extend(rows[header_rows:])
-        tgroup += tbody
-        return table
-
-    def run(self):
-
-        return [make_vhdl_entity_table([('adc_data_h_p', 'in std_logic_vector(7 downto 0)', 'long comment that dlkj sa salks l ask jdljsa lsdk jalsdkjsad sald sdlsdjs lkas als sakjsljsalj asld asldjas dljsad lsa dlsa djsa fdsiad f sa asof jsda fas fosa dfosa f saf saf dsao f ;asfd saod jfsa fd isadfi dsaof osa jfddsa f dsa ddsf oodsai osafd osadjf saofdj osa jfddlsa jd'), ('de', 'la', 'terre')], [('x','y','z')])]
-        node = nodes.Element()          # anonymous container for parsing
-        self.state.nested_parse(self.content, self.content_offset, node)
-        table_data = [[item.children for item in row_list[0]]
-                          for row_list in node[0]]
-        # print repr(table_data)
-        # table_data = [[1,2,3],[4,5,6]]
-        table_node = self.build_table_from_list(table_data, [0, 0, .1], 0, False)
-        table_node['classes'] += ['tab']
-        self.add_name(table_node)
-
-
-        return [table_node]
-
 class VHDLXRefRole(XRefRole):
+    """ VHDL cross-reference role
+    """
     pass
 
-
-def make_lexed_vhdl_node(text, classes = ['highlight', 'highlight-vhdl'], options={}):
-    tokens = Lexer(utils.unescape(text, 1), language='vhdl', tokennames='short')  # use 'short' object names so the Sphinx highlighting CSS rules will be found
-    node = nodes.literal('', '', classes=classes)  # <code> element
-
-    # analyze content and add nodes for every token
-    for pygment_classes, value in tokens:
-        node += nodes.inline(value, value, classes=pygment_classes)  # <span> element
-    return node
-
 def vhdl_code_role(role, rawtext, text, lineno, inliner, options={}, content=[]):
+    """ Define the ``vhdl`` role, which inserts the specified raw text as a literal block of text color-highlighted with Pygments for the VHDL syntax.
+
+    Parameters:
+        role: *unused*
+        rawtext (str): raw text of the role
+        text: text between the backticks
+        lineno:
+        inliner:
+        options (dict):
+        content (list):
+
+    Returns:
+        tuple: a (node_list, error_message_list) tuple
+    """
     try:
-        node = make_lexed_vhdl_node(text)
+        node = doc_utils.make_lexed_vhdl_node(text)
         return [node], []
     except LexerError as error:
         msg = inliner.reporter.warning(error)
@@ -547,19 +311,12 @@ def vhdl_code_role(role, rawtext, text, lineno, inliner, options={}, content=[])
 vhdl_code_role.options = {'class': directives.class_option,
                      'language': directives.unchanged}
 
-# register_canonical_role('code', code_role)
-
-vhdl_parser = VHDLFiles()
-
 class VHDLDomain(Domain):
-    """
-    Domain for all objects that don't fit into another domain or are added
-    via the application interface.
+    """Class defining the VHDL Domain. Instance of this class holds the domain state, including the VHDLParser instance.
     """
 
     name = 'vhdl'
     label = 'VHDL'
-
 
     object_types = {
         'entity': ObjType('entity', 'entity'), # ObjType(type_name, role_name1, role_name 2..., attr1=value1, ...)
@@ -567,13 +324,10 @@ class VHDLDomain(Domain):
         }
 
     directives = {
-         # 'entity': VHDLTarget,
-         # 'target': VHDLTarget,
          'autoentity': VHDLEntityDirective,
          'include-docs': VHDLIncludeDirective,
          'parse': VHDLParseDirective, # Includes a specified range of VHDL comment lines in this document as restructuredText or MarkDown ,
-         'test': Test,
-   }
+    }
 
     roles = {
         'entity': VHDLXRefRole(lowercase=True),
@@ -582,20 +336,42 @@ class VHDLDomain(Domain):
 
     initial_data = {
         'objects': {},      # (type, name) -> docname, labelid
+        'parser' : None  # VHDL parser instance
     }
 
     dangling_warnings = {
     }
 
-    def clear_doc(self, docname):
-      if 'objects' in self.data:
 
-        for key, (fn, _) in list(self.data['objects'].items()):
-            if fn == docname:
-                del self.data['objects'][key]
+    def __init__(self, env):
+        """ Create the VHDL domain instance, including a VHDLParser instance.
+
+        Parameters:
+
+            env (sphinx.BuildEnvironment): instance of the build environment object that will hold the list of objects created by this domain.
+
+        """
+        super().__init__(env)
+        # self.data['parser'] = VHDLParser()
+
+        # we create an instance of the parser within this domain instance.
+        # In the directives, we access through the BuildEnvironment object as end.domains['vhdl].parser
+        # We tried to put it in the data, but that gets pickled, and the pickle cannot digest the parser object.
+        self.vhdl_parser = VHDLParser()
+        print(f'Created VHDL parser instance for domain {self.name} in environment {env}')
+
+    def clear_doc(self, docname):
+
+        print(f'Clearing {self.name} domain data for docname={docname}')
+        if 'objects' in self.data:
+            for key, (fn, _) in list(self.data['objects'].items()):
+                if fn == docname:
+                    del self.data['objects'][key]
 
     def resolve_xref(self, env, fromdocname, builder,
                      typ, target, node, contnode):
+        """
+        """
 
         objects = self.data['objects']  # same as env.domaindata['vhdl']['objects']
         objtypes = self.objtypes_for_role(typ) or []

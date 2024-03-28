@@ -1,3 +1,8 @@
+""" Provides the XElement, which extends the ElementTree.Element functionalities
+"""
+
+# Standard packages
+
 from xml.etree.ElementTree import Element
 
 

@@ -1,3 +1,6 @@
+""" Provides the  :class:`VHDLParser` class that is used to load and parse VHDL files,
+and extract the key information (entities, ports etc.) in an easy to use structure.
+"""
 
 # Standard packages
 import sys
@@ -17,12 +20,6 @@ from .xelement import XElement
 
 
 
-# class Namespace(object):
-#     """ Simple container to hold alll sort of data.
-#     """
-#     def __init__(self, **kwargs):
-#         vars(self).update(**kwargs)
-
 class Namespace(dict):
     """ Dict whose values can be accessed as attributes
     """
@@ -30,117 +27,7 @@ class Namespace(dict):
     def __setattr__(self,name,value): self[name]=value
 
 
-
-# class VHDLParser(object):
-#     """ Creates a parser that parses VHDL files into ElementTree from which any language constrict can be queried"""
-
-#     commented_expr = ['entity_declaration', 'generic_element', 'interface_element', 'library_clause', 'use_clause']
-
-#     def __init__(self):
-#         """ Initializes the VHDL parser """
-#         # Load and parse the VHDLsyntax file
-#         # print('VHDL Parser: loading VHDL syntax file')
-#         # vhdl_grammar_filename = os.path.join(os.path.dirname(__file__), 'vhdl_grammar.txt')
-#         # with open(vhdl_grammar_filename) as f:
-#         #     self.vhdl_grammar=f.read()
-#         # self.vhdl_rules = None  # for now don't parse the rules, in case we don't need to
-#         self._last_code = None
-
-
-#     # def parse_to_node_tree(self, code, pos=0, rule_name='statements'):
-#     #     #  if code hash not in cache, parse
-#     #     self.parse_vhdl_syntax() # make sure the parser exist
-#     #     return self.vhdl_rules[rule_name].parse(code, pos=pos)
-
-#     # def parse(self, code=None, pos=None, line=None, rule_name='statements'):
-#     #     """ Parse the VHDL code.
-
-#     #     Parameters:
-
-#     #         code (str): Code to parse
-
-#     #         pos (int): position from which to parse in `code`. Zero-based. Default is zero if no
-#     #             line number is specified.
-
-#     #         line (int): line number from which to parse in `code`. leading spaces are skipped.
-#     #             `line` **is zero-based**, unlike what editos show, but is consistent with the parser
-#     #             reporting. Default is first line of `code` if no `pos` is specified.
-
-#     #         rule_name(str): Name of the VHDL rule to parse with.
-
-#     #     Returns:
-
-#     #             An ElementTree of the parsed code, with comments fixed to be grouped with their proper
-#     #         associated elements.
-
-#     #     """
-#     #     if code is None:
-#     #         if self._last_code:
-#     #             code = self._last_code
-#     #         else:
-#     #             raise ValueError('Please provide the soure code')
-#     #     if line is None and pos is None:
-#     #         pos = 0
-#     #     elif line is not None:
-#     #         # line -= 1
-#     #         lines = code.splitlines(True)
-#     #         pos = sum(len(t) for t in lines[:line])
-#     #         pos += len(lines[line]) - len(lines[line].lstrip()) # skip whitespaces
-#     #         print(('starting with text at pos %i:%r' % (pos, code[pos:pos+300])))
-#     #     else:
-#     #         raise TypeError('Cannot specify both pos and line arguments')
-
-#     #     elem = self.node_to_element(self.parse_to_node_tree(code, pos=pos, rule_name=rule_name))
-
-#     #     # fix empty tags
-#     #     for e in elem.iter():
-#     #         if not e.tag:
-#     #             e.tag = 'tag'
-
-#     #     # Fix comments (move surrounding comment lines back into their associated elements)
-#     #     self.fix_comments(elem)
-
-
-#     #     return elem
-
-
-#     #def node_to_element_tree(self, node):
-#     #    return self.node_to_element(node)
-
-
-#     # create_comment_blocks(etc)
-
-#     def move_header_comments(self, et):
-
-#         for e in et.iter():
-#             if e.tag in ('parser.whitespace', 'parser.comment', 'parser.carriage_return'):
-#                 comment.append(e)
-
-
-#     def fix_comments(self, elem):
-#         """ Scan the parsed code and move block comments and trailing line comments back into the associated element.
-
-#         Arguments:
-#             elem (VHDLElement (ElementTree.Element)): The parsed tree to process
-
-#         Returns:
-#             Nothing. The Element Tree is modified in-place.
-
-#         Note:
-#             The nodes of the element tree are moved in a way that the source code it represents is not modified.
-#         """
-#         print('VHDL Parser: Identifying block comments')
-#         VHDLBlockCommentTransform(elem)
-#         print('VHDL Parser: Assigning block comments to their associated VHDL elements')
-#         VHDLMoveHeadComments(elem, self.commented_expr)
-#         print('VHDL Parser: Assigning trailing end-of-line comments to their associated VHDL elements')
-#         VHDLMoveTailComments(elem, self.commented_expr)
-#         return
-
-
-
-
-class VHDLFiles(XElement):
+class VHDLParser(XElement):
     """ ElementTree object representing a set of VHDL files and allows loading and parsing VHDL files, and provides direct access to entity, architectures,
     variables etc across the project
 
@@ -148,131 +35,52 @@ class VHDLFiles(XElement):
     """
 
     def __init__(self):
+        """ Creates a new parser object
+        """
         super().__init__('project')
         # self.vhdl_parser = VHDLParser()
-        self.summaries = {}
+        self.files = {}
         self.entities = Namespace()
-        self.labels = []
-        # self.load_remap_table()
+        self.labels = {}  # Contains a dict of all labeled objects defined in various namespaces. { (namespace, label_name): labeled_object}
+
+    def token_list_to_element_tree(self, token_list):
+        """ Convert VSG token list representing the content of a VHDL file into an hierarchichal XElement tree.
+
+        This method converts each token of `token_list` into an Xelement that is added as children
+        to the parent Xelement with the text of the original token. The row and column where each
+        element appears is stored as an Xelement attribute to facilitate processing.
+
+        The ``enter_prod`` and ``leave_prod`` attributes of the tokens are used to determine
+        when we are entering and leaving a hiearchy level. When a level is entered, a new parent
+        Xelement is created tagged with the name of the production we entered, and all subsequent
+        tokens are assigned to that parent until we exit that hierarchy level. This is repeated
+        recursively.
+
+        The top (i.e root) Xelement represents the VHDL files from which the tagged list was
+        revived,  and is tagged with the ``filename`` attribute containing the full file path and
+        name of the source file, as provided by the parameter `filename`.
+
+        The parent nodes do not have associated text. The overall text represented by the top
+        Xelement and recursively by all its children is identical to the original text reprented by the VSG token
+        list.
 
 
-    def load_remap_table(self):
-        """ Load and process the remap table.
-
-        The remap table is a YAML file that list the VSG tokens that identify the first and  last token
-        of each "production" (i.e. basic language elements). These tags are used to reconstruct a hiearchical version of the token list.
-
-        This retagging won't be needed if VSG is mofified to perform the tagging as part of its token classification phase.
-        """
-        with open('remap.yaml', 'r') as file:
-            self.remap_table = yaml.safe_load(file)
-
-        # Recursively add the _name field to every dict and set it to the name of that dict in the yaml file
-        # The _name will be used to set the name of the production.
-        def add_names(d):
-            for (k,v) in d.items():
-                # print(f'{k}:{v}')
-                if isinstance(v, dict):
-                    v['_name'] = k
-                    add_names(v)
-        add_names(self.remap_table)
-        self.remap_table['_name'] = 'file'
-        print(self.remap_table)
-
-
-    def tag_token_list(self, token_list):
-        """ Add language production tags to the originally untagged VSG token list in order to provide hierarchy cues.
-
-        VSG parser provides a flat token list that does not (yet) have tags that hint at the
-        hiearchy of the language elements of the parsed file. This function uses a remap table to
-        identify the boundaries of the language elemts and add those hierarchy tags to the tokens.
+        All tokens
 
         Parameters:
 
-            token_list (list): token list generated by VSG. Will be modified in-place.
-        Returns:
-            None. The provided `token_list` is modified in-place.
-
-        """
-        elem = [self.remap_table]  # current element being processed
-        elem_update = True
-
-        def ensure_tuple(v):
-            return tuple() if v is None else v if isinstance(v, (tuple, list)) else (v, )
-        i = 0
-        while i < len(token_list):
-            tn = token_list[i].get_unique_id('.')
-            if elem_update:
-                e = elem[-1]  # current language element, always at the end of the list
-                en = e['_name'] # name of the curent language element
-                # get the names of the boundary tokens for the current element
-                end_at = ensure_tuple(e.get('_end_at'))
-                end_before = ensure_tuple(e.get('_end_before'))
-                start_at_dict = {ee.get('_start_at'):ee for en, ee in e.items() if '_start_at' in ee}
-                start_after_dict = {ee.get('_start_after'):ee for en, ee in e.items() if '_start_after' in ee}
-
-            if any(tn.endswith(s) for s in end_before):
-                elem.pop()
-                elem_update = True
-                token_list[i-1].leave_classify.append(en)
-                continue
-
-            if r := [s for s in start_at_dict if tn.endswith(s)]:
-                e = start_at_dict[r[0]]
-                elem.append(e)
-                elem_update = True
-                token_list[i].enter_classify = e['_name']
-                continue
-
-            if any(tn.endswith(s) for s in end_at):
-                elem.pop()
-                elem_update = True
-                token_list[i].leave_classify.append(e['_name'])
-                continue
-            # if t.sub_token not in ('whitespace'):
-            #     path = ':'.join(ee['_name'] for ee in elem if not ee['_name'].startswith('_') )
-            #     print(f"[{i}]{path}.{t.sub_token}: {t.get_value()}")
-
-            i += 1
-            if r := [s for s in start_after_dict if tn.endswith(s)]:
-                e = start_at_dict[r[0]]
-                elem.append(start_after_dict[r[0]])
-                elem_update = True
-                token_list[i].leave_classify.append(e['_name'])
-                continue
-
-
-            # t0 = time.time()
-            # print(('VHDL Parser: loading %s' % os.path.abspath(filename)))
-            # with open(filename) as f:
-            #     code = f.read()
-            # load_time = time.time() - t0
-            # t0 = time.time()
-            # self._last_code = code  # save for debugging
-            # print(('VHDL Parser: parsing %s' % filename))
-            # nodes = self.parse(code)
-            # parsing_time = time.time() - t0
-            # print(('VHDL Parser: Finished processing %s. Loading took %0.3f s, parsing took %0.3f s.' % (filename, load_time, parsing_time)))
-            # return nodes
-
-    def token_list_to_element_tree(self, filename, token_list):
-        """ Convert VSG token list representing the content of a VHDL file into an XElement tree
-
-
-        Parameters:
-
-            filename (str): value of the attribute ``filename`` applied to the top element
-
-            token_list (list): list of tokenes processed by VSG
+            token_list (list): list of tokens produced by VSG. The first element of the list shall
+                have the ``filename`` attribute that described the path to the source file from
+                which the tokens were parsed.
 
         Returns:
 
-            A XElement  tree containing the hierarchical version of the VHDL file.
+            A XElement tree representing the VHDL file.
 
         """
 
-        et = XElement('file', filename=filename)
-        elem = [et]
+        root = XElement('file', filename=token_list[0].filename)
+        elem = [root]
         col = 0
         line = 0
         for t in token_list:
@@ -291,7 +99,7 @@ class VHDLFiles(XElement):
                 line += 1
             for prod in t.leave_prod:
                 elem.pop()
-        return et
+        return root
 
 
     def group_and_move_comments(self, etc, recurse=True, verbose=0):
@@ -418,10 +226,9 @@ class VHDLFiles(XElement):
 
             XElement(tag='file', filename=<current_filename>') whose children describe the parsed file.
         """
-        if filename in self.summaries:
-            print(("Warning: File '%s' has already been parsed" % filename))
-            # raise RuntimeError("File '%s' has already been parsed" % filename)
-
+        if filename in self.files:
+            print("Warning: File '{filename}' has already been parsed. Ignoring." )
+            return self.files[filename]
         # Load the VHDL file
         with open(filename, 'r') as file:
             lines = file.readlines()
@@ -429,49 +236,62 @@ class VHDLFiles(XElement):
         # Parse the file using VSG
         if verbose:
             print(f'Parsing the VHDL file {filename} into a token list using VSG')
-        vf = vhdlFile.vhdlFile(lines)
+        vf = vhdlFile.vhdlFile(lines, sFilename=filename)
+
         # Process the token list from VSG extract the hierarchy
-        # self.remap_token_list(vf.lAllObjects)
         if verbose:
             print(f'Converting the {filename} token list into an Element tree')
-        file_element = self.token_list_to_element_tree(filename, vf.lAllObjects)
+        file_element = self.token_list_to_element_tree(vf.lAllObjects)
+
+        # Group comments in blocks and move those header/trailer comment blocks within their associated productions when appropriate
         if verbose:
             print(f'Processing comments in {filename}')
         self.group_and_move_comments(file_element, recurse=recurse)
+
         self.append(file_element)
+        self.files[filename] = file_element
 
+        # Update the quick-access tables that allows us to easily access the main language elements of the file.
+        self.entities.update(self.analyze_entities(file_element))
 
-        self.entities.update(self.analyze_entities(file_element, self.labels))
-
-        # Add summary info
-        # self.summaries[filename] = summary
-
-        # Add entities found in the summary to global entity list
-        # for entity_key, entity in list(summary['entities'].items()):
-        #     if entity_key in self.entities:
-        #         print(("Entity '%s' has already been parsed" % entity.name))
-
-        #         # raise RuntimeError("Entity '%s' has already been parsed" % entity['name'])
-        #     self.entities[entity_key] = entity
         return file_element
 
 
-    def add_label(self, label_list, typ, label, obj):
-        if not isinstance(label, list):
-            label = [label]
-        for lab in label:
-            if (typ, lab) in label_list:
-                raise ValueError("%s label '%s' is already defined" % (typ, lab))
-            label_list[(typ, lab)] = obj
+    def add_label(self, namespace, labels, obj):
+        """ Adds one or labels pointing to the object `obj` to the global label dict under the namespace `namespace`
+
+        Parameters:
+
+            namespace (str): namespace ('libraries', 'entities' etc) to which the label(s) are associated with.
+
+            labels (str or list): label strings or list of label strings that contain the label name.
+
+            obj: element associated with the label.
+
+        """
+        if not isinstance(labels, list):
+            labels = [labels]
+        for label in labels:
+            if (namespace, label) in self.labels:
+                raise ValueError(f"Label {(namespace, label)} is already defined")
+            self.labels[(namespace, label)] = obj
 
     def get_head_and_tail_comments(self, node, verbose=0):
         """ Return the head and tail comment node of the object described by `node`.
 
         Essentially returns the first and last ``comment_block`` Element  of `node`.
 
+        Parameters:
 
-        Returns: (head_comment, tail_comment) tuple providing the head and tail comment nodes. These
-            elements are `None` if unavailable.
+            node (Xelement): Xelement node from which the comments are to be extracted
+
+            verbose (int): When non-zero, prints debugging messages.
+
+        Returns:
+
+         tuple (head_comment, tail_comment) providing the head and tail comment nodes. Each of these
+            elements can be `None` if unavailable.
+
         """
         block_comments = node.findall('comment_block')
         if verbose:
@@ -483,8 +303,6 @@ class VHDLFiles(XElement):
         if n > 1:
             tail_comments = block_comments[-1]
 
-        # head_comments = [n.text for n in node.findall('.//head_comment//comment_text')]
-        # tail_comments = [n.text for n in node.findall('.//tail_comment//comment_text')]
         return (head_comments, tail_comments)
 
 
@@ -537,7 +355,7 @@ class VHDLFiles(XElement):
     #     return dict(libraries=libraries, entities=entities,  labels=labels)
 
 
-    def analyze_libraries(self, top_elem, label_list, filename):
+    def analyze_libraries(self, top_elem, filename):
         # Analyze LIBRARY clauses
         libraries = {}  # get_node(summary, 'library')
         libraries['work'] = Namespace(name='work', use=[], block_comment=[], tail_comment=[], node=None, source_file='')
@@ -553,7 +371,7 @@ class VHDLFiles(XElement):
                                      head_comments=lib_head_comments,
                                      tail_comments = lib_tail_comments)
                 libraries[lib_name.lower()] = lib_info
-                self.add_label(label_list, 'library', lib_name, lib_info)
+                self.add_label('library', lib_name, lib_info)
                 # print 'Added library', lib_name
 
         # Analyze USE clauses
@@ -594,8 +412,6 @@ class VHDLFiles(XElement):
         """
         if not interface_nodes:
             return []
-        # interface_list_node = entity_elem.find(list_name)
-        # if interface_list_node is None: return []
         interface_list = []
         for elem in interface_nodes:
             # elif elem.tag == '_':
@@ -614,16 +430,19 @@ class VHDLFiles(XElement):
                 interface_list.append(Namespace(names=[], definition=None, comments=comments))
         return interface_list
 
-    def analyze_entities(self, top_elem, label_list):
+    def analyze_entities(self, top_elem):
         """ Extracts useful information about all entities in the file.
 
         Parameters:
 
             top_elem (XElement): file element to analyze
+
             label_list (): List of all encountered labels, to be updated with labels encountered in the analysis
 
         Returns:
-            (Namespace): contains
+
+            Namespace: containsthe following information::
+
                 <entity_name_in_lowercase1>:
                     name: <entity_name>
                     ports: <list of ports>
@@ -664,11 +483,11 @@ class VHDLFiles(XElement):
             entities[entity_name.lower()] = entity_info
 
             # Add labels to the label list
-            # self.add_label(label_list, 'entity', entity_name, entity_info)
-            # for port in ports:
-            #     self.add_label(label_list, 'entity.port', port.names, port)
-            # for gen in generics:
-            #     self.add_label(label_list, 'entity.generic', gen.names, port)
+            self.add_label('entity', entity_name, entity_info)
+            for port in ports:
+                self.add_label(f'entity[{entity_name}].port{port.names}', port.names, port)
+            for gen in generics:
+                self.add_label(f'entity[{entity_name}].generic{port.names}', gen.names, port)
         return entities
 
     def replace(self, s, substrings, replacement_string):
@@ -678,11 +497,25 @@ class VHDLFiles(XElement):
             s = s.replace(ss,replacement_string)
         return s
 
-    def is_header(self, s):
+    def is_fence(self, s):
+        r""" Returns True if the string is a valid RestructuredText fence line.
+
+        A valid fence line contains **only** a consecutive series of three or more fence characters preceded and succeded by spaces.
+        The string such as ``=== New Function``  or  ``--- Function below ---``  return False.
+
+        Parameters:
+
+            s (str): string to be tested
+
+        Returns:
+
+            bool: True if the string is a valid RestructuredText fence.
+
+        """
+        s = s.strip()
         if not s:
             return False
-        c = s[0]
-        return c in "*=-#%^" and s.startswith(c*3) and s != c*len(s)
+        return s[0] in "*=-#%^" and s.startswith(s[0]*3) and s != s[0] * len(s)
 
     def dedent(self, s):
         return textwrap.dedent('\n'.join(s)).splitlines()
@@ -696,7 +529,7 @@ class VHDLFiles(XElement):
         for line in lines:
             s = line.strip()
             # Discard decorative headers
-            if self.is_header(line):
+            if self.is_fence(line):
                 continue
             # Remove leading comment marks
             for ss in ('/*', '--!', '--'):
@@ -740,9 +573,6 @@ class VHDLFiles(XElement):
         if verbose:
             print(f'lines = {lines}')
         for line in lines:
-            # stripped_line = line.strip()
-            # if  self.is_header(line):
-            #     continue
             if verbose:
                 print(f'sl={line!r}')
             if is_brief and brief and not line: # is en empty line once we have a brief
@@ -759,9 +589,6 @@ class VHDLFiles(XElement):
         return brief, details
 
     def get_entity(self, entity_name):
-        # for entity_node in self.findall('.//entity_declaration'):
-        #     if entity_node is not None and entity_node.findsubtext('identifier').upper() == name.upper():
-        #         return entity_node
         if entity_name.lower() in self.entities:
             return self.entities[entity_name.lower()]
         raise RuntimeError(f'Could not find entity {entity_name} in the current file set. '
@@ -770,19 +597,11 @@ class VHDLFiles(XElement):
     def get_file_with_entity(self, name):
         """Returns the file node than contains the entity `name`
         """
-        # entity = self.get_entity(entity_name)
-        # return self.find(entity.source_file)
-        # for file in self:
-        #     if file.filename == name or file.findwithsubtext('.//entity_declaration/identifier', name, caseless=True) is not None:
-        #         return file
         name = name.lower()
         if name in self.entities:
             return self.entities[name].file_node
         print(f'Cannot find {name} in {list(self.entities.keys())}')
 
-
-    # def get_entity_summary(self, entity_name):
-    #     return self.get_entity(entity_name)
 
     def get_comments(self, entity, start_before=None, start_after=None, end_before=None, end_after=None, dedent=True):
         def match(source, target):
@@ -818,6 +637,8 @@ class VHDLFiles(XElement):
         return self.remove_comment_marks(matching_lines, dedent=dedent)
 
 def pp(t, level=0, collapsed_expr=['target', 'name', 'expression', 'simple_expression', 'simple_name', '_']):
+    """ Pretty-print the Xelement
+    """
     skip = ((not t.expr_name or (t.expr_name.startswith('_') and 1)) and t.children) or not t.text
     collapsed =  t.expr_name in collapsed_expr
     #skip = bool(t.children) or not t.text
@@ -831,7 +652,7 @@ def pp(t, level=0, collapsed_expr=['target', 'name', 'expression', 'simple_expre
 
 
 if __name__ == '__main__':
-    v = VHDLFiles()
+    v = VHDLParser()
     # v = VHDLParser()
     print(('parsing %s'% sys.argv[1]))
     p=v.parse_file(sys.argv[1])

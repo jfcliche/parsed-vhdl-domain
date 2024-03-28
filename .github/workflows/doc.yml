@@ -22,8 +22,6 @@ jobs:
           with:
             documentation_path: ./docs/source
         - run: pwd
-        - run: cd
-        - run: cd vhdl-sphinx-domain
         - run: git tag
         - run: git version
         - run: git describe

@@ -30,4 +30,5 @@ jobs:
         - run: git tag
         - run: git version
         - run: git describe
+        - run: git status
         # - run: git log

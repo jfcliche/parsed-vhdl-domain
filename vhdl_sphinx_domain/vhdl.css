@@ -41,6 +41,11 @@ table.docutils td.align-right {
 	text-align: right; /* Align the text instead*/
 }
 
+code {
+	font-size: 100%;
+    text-shadow: 0 0px 0 #FFF;
+}
+
 /* Nice display of key combinations used with role :kbd:`some key combo`. CSS entry inspired from StackOverflow own web site*/
 .rst-content code.kbd {
     /*display: inline-block;*/
@@ -71,12 +76,50 @@ table.docutils td.align-right {
 }
 
 /* Override reference text size to be the same as the surrounding text*/
-.rst-content code {
+.rst-content .reference code.xref {
 	font-size: 100%;
+    background: none;
+    color: blue
+
 }
 
 .rst-content dl {
     margin-bottom: -12px;
+}
+
+/* Don't put background or border on references in table cells */
+td .xref {
+	font-size: 100%;
+    background: none;
+	border: none
+}
+
+/* Put a frame around autosummary tables. */
+.autosummary-block {
+ 	margin: 3px;
+	padding: 3px;
+/*	border-style:    solid;
+	border-width: 3px;
+	border-color: black;*/
+	background-color:  antiquewhite;
+	margin-bottom: 24px;
+
+}
+
+/* Underline the autosummary rubruc text */
+.autosummary-block .rubric {
+	font-size: 125%;
+	text-decoration:   underline;
+}
+
+/* remove norder from table - looks nicer */
+ .autosummary-block table.longtable {
+  border: 0px solid;
+}
+
+/* Remove padding in autosummary table's enclosing <p> */
+ .autosummary-block .wy-table-responsive {
+margin-bottom: 0px;
 }
 
 /***********************************

@@ -1,14 +1,13 @@
 # VHDL-sphinx-domain
 
 
-`vhdl-sphinx-domain` (VSD) is a [sphinx](https://www.sphinx-doc.org/) domain extension that can be used to create rich VHDL project documentation
-by combining the flexibility of Sphinx with a VHDL parser in order to automatically extract as much documentation as possible
-from the VHDL source code.
-
-This extension uses the parser from the `vhdl-style-guide`  to extract the code structure and the comments comments from VHDL files,
-and provides directives to insert the code information in the Sphinx RestrucuredText documents.
+`vhdl-sphinx-domain` (VSD) is a [Sphinx](https://www.sphinx-doc.org/) domain extension that can be
+used to create rich VHDL project documentation by combining the flexibility of the Sphinx
+documentation system with a VHDL parser that can automatically extract the structure and
+documentation from the VHDL source code.
 
 Features:
+
   - Extracts header comments and trailing comments and associates them with their elements
   - Automatically document entities, with their generic and port lists
   - Allow integrating any comment block in the VHDL source files, including markdown tables
@@ -16,7 +15,8 @@ Features:
 
 ## Documentation
 
-Online documentation can be found in https://jfcliche.github.io/vhdl-sphinx-domain/
+Online documentation can be found at https://jfcliche.github.io/vhdl-sphinx-domain/
+
 
 ## Installation
 
@@ -33,11 +33,6 @@ In your sphinx `conf.py` file add
 ```python
   extensions = ['vhdl_sphinx_domain']
 ```
-
-## Repository maintainer
-
- - JF Cliche, vhdl@jfcliche.com
-
 
 ## Similar projects
 

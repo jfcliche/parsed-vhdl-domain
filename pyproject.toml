@@ -14,6 +14,8 @@
         { name = "JF Cliche", email = "vhdl@jfcliche.com" }
         ]
     dependencies = [
+        "setuptools>=64", # required by setuptools-scm
+        "setuptools-scm>=8.0",
         "sphinx",
         "sphinx_rtd_theme",
         "sphinxcontrib.restbuilder",  # used for debugging output

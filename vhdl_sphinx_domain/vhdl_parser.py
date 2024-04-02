@@ -1,4 +1,4 @@
-""" Provides the  :class:`VHDLParser` class that is used to load and parse VHDL files,
+""" Provides the  :class:`VHDLParser` class that is used to load and parse VHDL files
 and extract the key information (entities, ports etc.) in an easy to use structure.
 """
 
@@ -17,15 +17,13 @@ from vsg import vhdlFile, token
 # Local packages
 
 from .xelement import XElement
-
-
+from .ansi import *
 
 class Namespace(dict):
     """ Dict whose values can be accessed as attributes
     """
     def __getattr__(self,name): return self.get(name)
     def __setattr__(self,name,value): self[name]=value
-
 
 class VHDLParser(XElement):
     """ ElementTree object representing a set of VHDL files and allows loading and parsing VHDL files, and provides direct access to entity, architectures,
@@ -35,13 +33,40 @@ class VHDLParser(XElement):
     """
 
     def __init__(self):
-        """ Creates a new parser object
+        """ Creates a new parser object.
+
+        The following attributes are initialied:
+
+        - ``files`` (dict): dict in the format ``{filename: file_node, ...}`` that maps filenames to
+          top node of the element tree describing the parsed VHDL file.
+
+            - ``filename`` (str) is a string containing the filename of the parsed VHDL file
+            - ``file_node`` (XElement): is the top :class:`XElement` node of the parsed VHDL code.
+
+        - ``entities`` (dict): dict in the format ``{entity_name : entity_node, ...}``` that maps
+          entity name to the Xelement node that described that entity in the parsed element tree.
+
+            - ``entity`` (str): entity name
+            - ``entity_node`` (XElement): node corresponding to the entity
         """
         super().__init__('project')
         # self.vhdl_parser = VHDLParser()
         self.files = {}
         self.entities = Namespace()
         self.labels = {}  # Contains a dict of all labeled objects defined in various namespaces. { (namespace, label_name): labeled_object}
+
+
+    def print_debug(self, verbose_level, *args):
+        """ Prints strings depending on the verbose level.
+
+        Parameters:
+
+            verbose_level (int): Selects which string to print. 0 prints none, 1 prints the first one, 2 prints the first two etc.
+
+            args (list): list of string to print
+        """
+        for arg in args[:verbose_level]:
+            print(arg)
 
     def token_list_to_element_tree(self, token_list):
         """ Convert VSG token list representing the content of a VHDL file into an hierarchichal XElement tree.
@@ -75,7 +100,7 @@ class VHDLParser(XElement):
 
         Returns:
 
-            A XElement tree representing the VHDL file.
+            XElement: A XElement tree representing the VHDL file.
 
         """
 
@@ -85,7 +110,7 @@ class VHDLParser(XElement):
         line = 0
         for t in token_list:
             for prod in t.enter_prod:
-                ne = XElement(prod, col=col, line=line)
+                ne = XElement(prod, col=col, line=line, is_prod=True)
                 elem[-1].append(ne)
                 elem.append(ne)
             # if 1 or t.sub_token not in ('whitespace'):
@@ -102,52 +127,30 @@ class VHDLParser(XElement):
         return root
 
 
-    def group_and_move_comments(self, etc, recurse=True, verbose=0):
-        """ Scan the Element tree and group comments into 'comment_block' elements, and move those
+    def group_comments(self, et, verbose=0):
+        """ Scan the Element tree and group sequence of comments lines into ``comment_block`` or ``blank_line`` elements, and move those
         elements within the entity they precede or trail.
+
+        The provided element tree is modified in-place, but the text represented by the tree is unchanged.
+
+        Handles delimited (``/*  */``) as well as line comments (``--``).
+
+        A ``comment_block`` ends when its indentation level moves left or when a non-comment/non-blank token is detected.
+
+        Parameters:
+
+            et (XElement): element tree to be processed
+
+            verbose (int): If non-zero, prints debugging messages
         """
-        comment_group= []  # accumulated comment lines
+        comment_group= []  # accumulates comment lines element that belong to the same comment group/block
         comment_group_col = None # column number of the first comment of the group
         comment_line = []  # used to accumulate whitespce and comments before potentiallly writing those to the group if they qualify
-        comment_line_col = None
-        delimited_comment = False
-        last_prod = None   # last production
-        def process_comment_group(e):
-            nonlocal comment_line, comment_line_col, comment_group, comment_group_col, last_prod
+        comment_line_col = None  # column number of the comment in the current comment line
+        delimited_comment = False  # True if we are inside a delimited comment
 
-            if not comment_group:
-                return
-            if verbose:
-                print(f'Grouping comments {comment_group}. e={e}')
-            cg = etc.group(comment_group, 'comment_block')
-            comment_group = []
-            comment_group_col = None
-
-            # If we are trailing a production element, move comment grup and any post-production items into it
-            if last_prod is not None:
-                if verbose:
-                    print(f'Moving trailing comment {cg} into prod {last_prod}')
-                for ee in list(etc.iterbetween(start_after=last_prod, stop_before=cg, recurse=False)):
-                    if verbose:
-                        print(f'... moving {ee}')
-                    etc.remove(ee)
-                    last_prod.append(ee)
-                if verbose:
-                        print(f'Moving {cg} from {list(etc)}')
-                etc.move(cg, last_prod)
-                last_prod = None
-            # Otherwise, if we are on a production element, move the comment group and trailing blanks into it
-            elif len(e):
-                if verbose:
-                    print(f'Moving header comment {cg} into prod {e} with line {comment_line}')
-                etc.move(cg, e, 0)
-                etc.move(comment_line, e, 1)
-                comment_line.clear()
-                comment_line_col = None
-
-        for e in list(etc): # make a copy so we can safely modify the tree
-            if verbose:
-                print(f"Processing {e.tag} '{e.text!r}' @ line {e.get('line')} col {e.get('col')}, prod=(tag={last_prod})")
+        for e in list(et): # make a copy so we can safely modify the tree in-place
+            self.print_debug(verbose, f"Comment processing {UL}{RED if e.get('is_prod') else ''}{e.tag}{NC} '{e.text!r}' @ line {e.get('line')} col {e.get('col')})")
             # If we are in a comment block and get to the end
             if delimited_comment:
                 comment_line.append(e)
@@ -163,68 +166,150 @@ class VHDLParser(XElement):
                 delimited_comment = True
                 comment_line_col = e.col  # replace with real column
             elif e.tag in ('parser.whitespace', 'parser.blank_line'):
+                self.print_debug(verbose, f'adding whitespace/blank line')
                 comment_line.append(e)
             elif e.tag == 'parser.comment':
                 comment_line.append(e)
                 comment_line_col = e.col # replace with real column
-            elif e.tag == ('comment_block', 'blank_line'):
+            elif e.tag in ('comment_block', 'blank_line'):
                 pass
             elif e.tag == 'parser.carriage_return':
-                if verbose:
-                    print(f'carriage_return, e=(tag={e.tag}, text={e.text!r}), group=(len={len(comment_group)},col={comment_group_col}), line=(len={len(comment_line)}, col={comment_line_col})')
+                self.print_debug(verbose, f'carriage_return, e=(tag={e.tag}, text={e.text!r}), group=(len={len(comment_group)},col={comment_group_col}), line=(len={len(comment_line)}, col={comment_line_col})')
                 comment_line.append(e)
 
-                # If we have the end of a comment that is indented the same or to the right of the existing comment, add it to the group
+                # If we have the end of a comment that has the same or higher indentation than
+                # the existing comment group, add it to the group
                 if comment_line_col is not None and (not comment_group or comment_group_col is None or comment_line_col >= comment_group_col):
-                    if verbose:
-                        print(f'   Appending line to comment group')
+                    self.print_debug(verbose, f'   Appending line to comment group')
                     comment_group.extend(comment_line)
                     comment_line.clear()
                     comment_line_col = None
-                # if we detect the comment end (non-blank or non-comment element, empty line, comment with change of indentation,
-                # create an comment block element with the current comment group
+                # if we detect the comment end (empty line, comment with change of indentation),
+                # then create an comment block element with the current comment group
                 else:
-                    if verbose:
-                        print(f'   Blank or left indented comment line')
-                    process_comment_group(e)
-                    last_prod = None
+                    self.print_debug(verbose, f'   Blank or left indented comment line')
+
+                    # First group the existing comment block
+                    self.print_debug(verbose, f'   Grouping comments {comment_group}. e={e}')
+                    et.group(comment_group, 'comment_block')
+                    comment_group.clear()
+                    comment_group_col = None
+
+                    # Next process the ongoing comment line
                     if comment_line:
-                        if comment_line_col is None:
+                        if comment_line_col is None: # if we have an empty line, create a special group with it
                             if comment_line[0].get('col') == 0:
-                                etc.group(comment_line, 'blank_line')
-                        else:
+                                et.group(comment_line, 'blank_line')
+                        else: # if it's not an empty line, start a new comment group
                             comment_group.extend(comment_line)
                             comment_group_col = comment_line_col
                     comment_line.clear()
                     comment_line_col = None
-            else: # We have a non-comment token
-                if verbose:
-                    print(f'others, e=(tag={e.tag}, text={e.text!r}), group=(len={len(comment_group)},col={comment_group_col}), line=(len={len(comment_line)}, col={comment_line_col})')
-                process_comment_group(e)
+            else:
+                if e.get('is_prod'):  # if a production node, recurse into it
+                    self.print_debug(verbose, f'Production node {e=}')
+                    # recurse into production node
+                    self.group_comments(e, verbose=verbose)
+
+                self.print_debug(verbose, f' Non-comment/non-blank token {e=}({e.text}): Grouping comments {comment_group}.')
+                # Group any ongoing comment block
+                et.group(comment_group, 'comment_block')
+                comment_group.clear()
+                comment_group_col = None
                 comment_line.clear()
                 comment_line_col = None
-                if len(e):
-                    last_prod = e
-                elif e.text != ';':
-                    last_prod = None
+                # pp(et)
+        # process any dangling comment block at the end of this hierarchy level
+        et.group(comment_group, 'comment_block')
 
-        # process comments in sub-nodes
-        if recurse:
-            for e in list(etc):
-                if len(e) and e.tag not in ('comment_block','blank_line'):
-                    self.group_and_move_comments(e)
+    def move_header_comments(self, et, verbose=0):
+        """ Scan the Element tree and move comments and spaces immediately before a production element into that element.
 
-    def parse_file(self, filename, recurse=True, verbose=1):
-        """ Parse and analyze the specified VHDL file and add the resulting info to th
+        Assumes that comments have been grouped into comment blocks by :meth:``group_comments``.
 
         Parameters:
 
-            filename (str): filename of the VHDL file to be parsed
+            et (XElement): Element tree to process
 
+            verbose (int): if non-zero, prints debugging messages
+
+        """
+        header_elements = []  # accumulate header elements before moving them into the production element
+        for e in list(et): # make a copy so we can safely modify the tree
+            self.print_debug(verbose, f"Header comment processing {e.tag} '{e.text!r}' @ ({e.get('line')}, {e.get('col')})")
+            if e.tag == 'comment_block': # restart list on the comment block. Only the last block gets moved.
+                header_elements.clear()
+                header_elements.append(e)
+            elif e.tag in ('parser.whitespace', 'parser.blank_line', 'parser.carriage_return'):
+                header_elements.append(e)
+            elif e.tag == 'parser.comment':  # to be removed
+                self.print_debug(verbose, f"comment token!")
+                pp(e)
+                raise RuntimeError(' parser.comment tokens should not exist anymore')
+            elif e.get('is_prod'): # if we have a production element
+                self.move_header_comments(e) # recurse in production first so we don't move the comments again
+                et.move(header_elements, e, 0)
+                header_elements.clear()
+            else: # We have a non-comment token
+                header_elements.clear()
+
+    def move_tail_comments(self, et, verbose=0):
+        """ Scan the Element tree and move comments and spaces immediately after a production element into that element.
+
+        Assumes that comments have been grouped into comment blocks by :meth:``group_comments``.
+
+        Parameters:
+
+            et (XElement): Element tree to process
+
+            verbose (int): if non-zero, prints debugging messages
+
+        """
+        tail_elements = []  # accumulate tail elements before moving them into the production element
+        last_prod = None
+        for e in list(et): # make a copy so we can safely modify the tree
+            self.print_debug(verbose, f"Tail comment processing {e.tag} '{e.text!r}' @ line {e.get('line')} col {e.get('col')})")
+            if e.tag in ('blank_line', 'parser.whitespace', 'parser.blank_line', 'parser.carriage_return'):
+                tail_elements.append(e)
+            elif e.text == ';':
+                tail_elements.append(e)
+            else:
+                self.print_debug(verbose, f"  boundary element {e.tag} ")
+                if e.get('is_prod'):
+                    self.move_tail_comments(e, verbose=verbose) # recurse in production first so we don't move the comments again
+
+                if e.tag == 'comment_block':
+                    tail_elements.append(e)
+
+                if tail_elements and last_prod is not None:
+                    self.print_debug(verbose, f"  {RED} moving tail comment {tail_elements=} into {last_prod}{NC} ")
+                    et.move(tail_elements, last_prod)
+
+                tail_elements.clear()
+                last_prod = e if e.get('is_prod') else None
+                self.print_debug(verbose, f"  new {last_prod=} ")
+
+
+
+    def parse_file(self, filename, verbose=0):
+        """ Parse and analyze the specified VHDL file and add the resulting file node to this
+        element, and also stores summarized information on the file, entities etc.
+
+        ``self.files`` map is updated with the file node.
+
+        ``self.entities`` is updated with the summarized information on the entity(ies) in the file.
+
+        Parameters:
+
+            filename (str): filename of the VHDL file to be parsed. The path is relative to the root
+                vhdl path defined in the sphinx config file.
+
+            verbose (int): If non-zero, debugging messages are printed.
 
         Returns:
 
-            XElement(tag='file', filename=<current_filename>') whose children describe the parsed file.
+            XElement: A :class:`XElement` with ``tag='file'`` and attribute
+            ``filename=<current_filename>'`` whose children describe the parsed file.
         """
         if filename in self.files:
             print("Warning: File '{filename}' has already been parsed. Ignoring." )
@@ -234,19 +319,22 @@ class VHDLParser(XElement):
             lines = file.readlines()
 
         # Parse the file using VSG
-        if verbose:
-            print(f'Parsing the VHDL file {filename} into a token list using VSG')
+        self.print_debug(verbose, f'Parsing the VHDL file {filename} into a token list using VSG')
         vf = vhdlFile.vhdlFile(lines, sFilename=filename)
 
         # Process the token list from VSG extract the hierarchy
-        if verbose:
-            print(f'Converting the {filename} token list into an Element tree')
+        self.print_debug(verbose, f'Converting the {filename} token list into an Element tree')
         file_element = self.token_list_to_element_tree(vf.lAllObjects)
 
-        # Group comments in blocks and move those header/trailer comment blocks within their associated productions when appropriate
-        if verbose:
-            print(f'Processing comments in {filename}')
-        self.group_and_move_comments(file_element, recurse=recurse)
+        # Modify the element tree to group comments and move them into their associated production elements
+        self.print_debug(verbose, f'Processing comments in {filename}')
+        self.group_comments(file_element, verbose=verbose)  # group line comments into blocks
+        # pp(file_element)
+        self.move_header_comments(file_element, verbose=verbose)  # move header comments into the immediately following production element
+
+        # pp(file_element)
+
+        self.move_tail_comments(file_element, verbose=verbose)  # move tail comments into the immediately preceding production element
 
         self.append(file_element)
         self.files[filename] = file_element
@@ -289,7 +377,7 @@ class VHDLParser(XElement):
 
         Returns:
 
-         tuple (head_comment, tail_comment) providing the head and tail comment nodes. Each of these
+         tuple:  (head_comment, tail_comment) tuple  providing the head and tail comment nodes. Each of these
             elements can be `None` if unavailable.
 
         """
@@ -307,57 +395,24 @@ class VHDLParser(XElement):
 
 
 
-    # def analyze(self, top_elem, filename=''):
-    #     """
-    #     Process a parsed VHDL file and extract key information from it for easy access through
-    #     standard namespace objects.
-
-    #     Arguments:
-    #         - elem (VHDLElement): The root node of the element tree containing the parsed VHDL
-
-    #     Returns:
-    #         Namespace object.
 
 
-    #         labels:
-    #             - {name, type, object}  # type= generic, port, signal, attribute, instance
+    def analyze_libraries(self, top_elem):
+        """ Analyze the file node `top_elem` and extract the library information.
 
-    #         entities:
-    #             generics:
-    #                 - generic1 : {name: [], dir: str, type: str, default:str, pre_comment:str, post_comment: str}
-    #             port:
-    #                 -
-    #             architecture:
-    #                 signal:
-    #                 constant:
-    #                 attribute:
-    #                 instances:
-    #                 process:
-    #                 variables:
+        Parameters:
 
-    #         entity2:
-    #     Note:
-    #         The analysis code is dependent in the VHDL sytax definition file structure.
+            top_elem (XElement): file element to analyze
 
-    #     """
-    #     # summary = ElementTree.Element
-    #     # def get_node(node, tag):
-    #     #     n = node.find('tag')
-    #     #     if not n:
-    #     #         n = ElementTree.Element
-    #     #         node.append(n)
-    #     #     return n
+            label_list (): *unused* List of all encountered labels, to be updated with labels encountered in the analysis
 
-    #     labels = {}
-    #     libraries = self.analyze_libraries(top_elem, labels, filename=filename)
-    #     entities = self.analyze_entities(top_elem, labels, filename=filename)
+        Returns:
 
-    #     return dict(libraries=libraries, entities=entities,  labels=labels)
+            Namespace: Summary information on library usage
 
-
-    def analyze_libraries(self, top_elem, filename):
+        """
         # Analyze LIBRARY clauses
-        libraries = {}  # get_node(summary, 'library')
+        libraries = Namespace  # get_node(summary, 'library')
         libraries['work'] = Namespace(name='work', use=[], block_comment=[], tail_comment=[], node=None, source_file='')
 
         for lib_node in top_elem.findall('.//library_clause'):
@@ -367,7 +422,7 @@ class VHDLParser(XElement):
                 lib_info = Namespace(name=lib_name,
                                      node=lib_node,
                                      use=[],
-                                     source_file=filename,
+                                     source_file=top_elem.filename,
                                      head_comments=lib_head_comments,
                                      tail_comments = lib_tail_comments)
                 libraries[lib_name.lower()] = lib_info
@@ -636,18 +691,27 @@ class VHDLParser(XElement):
         #     print(f"match={' '.join(matching_lines)}")
         return self.remove_comment_marks(matching_lines, dedent=dedent)
 
-def pp(t, level=0, collapsed_expr=['target', 'name', 'expression', 'simple_expression', 'simple_name', '_']):
-    """ Pretty-print the Xelement
+
+def pp(elem, level=0, collapse=(), max_depth=0, width=80):
+    """ Pretty printer for the XElement tree.
     """
-    skip = ((not t.expr_name or (t.expr_name.startswith('_') and 1)) and t.children) or not t.text
-    collapsed =  t.expr_name in collapsed_expr
+    #skip = ((not t.expr_name or (t.expr_name.startswith('_') and 1)) and t.children) or not t.text
+    collapsed =  elem.tag in collapse or (max_depth and level>=max_depth)
+
     #skip = bool(t.children) or not t.text
     #skip = False
-    if not skip or collapsed:
-        print('   '*level, '[%s] (%i-%i) %s' % (t.expr_name, t.start, t.end, ('=' + repr(t.text)) if (not t.children or collapsed) else ''))
+    #if not collapsed:
+    indent = '   ' * level
+    collapsed_str = '(collapsed) ' if collapsed else ''
+    text = ('' if len(elem) and not collapsed else repr(elem.subtext))[:width]
+    tag = f'<{elem.tag}>' if elem.tag != '_' else ''
+    print(f'{indent}{tag}({id(elem):x}) {collapsed_str}{text}')
+
+        #print  '%s%s' % ('   '*(level+1), )
     if not collapsed:
-        for c in t.children:
-            pp(c, (level+1) if not skip else level, collapsed_expr)
+        for e in elem:
+            pp(e, level=(level+1), collapse=collapse, max_depth=max_depth)
+
 
 
 

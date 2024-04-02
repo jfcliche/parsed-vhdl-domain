@@ -222,15 +222,34 @@ class XElement(Element):
         return ne
 
     def move(self, element, target_element, index=None):
-        if isinstance(element, (list, tuple)):
-            for ee in reversed(element):
-                self.move(ee, target_element, index)
+        """ Move element(s) `element` into `target_element` at specified position.
+
+        Parameters:
+
+            element (list or XElement): Element(s) to move. If `element` is a list or tuple, move all the specified elements.
+
+            target_element (XElement): Destination element
+
+            index (int or None): If ``index = None`` or ``index = -1``, appends data to the target element. If ``index >= 0``, insert
+                the elements starting at the specified index on the target element.
+        """
+
+        # make sure we have a list of elements
+        if not isinstance(element, (list, tuple)):
+            elements = list(element)
         else:
-            self.remove(element)
-            if index is None:
-                target_element.append(element)
-            else:
-                target_element.insert(index, element)
+            elements =  element
+
+        if index is None or index == -1:
+            for ee in elements:
+                self.remove(ee)
+                target_element.append(ee)
+        elif index >= 0:
+            for ee in reversed(element):
+                self.remove(ee)
+                target_element.insert(index, ee)
+        else:
+            raise ValueError(f'Index mist be either None, -1, or >= 0')
 
     def subtextbetween(self, start_at=None, start_after=None, end_before=None, end_after=None):
         """ Like `subtext()`, but only returns the contatenated text between the specified starting and ending elements, crossing hierarchy.

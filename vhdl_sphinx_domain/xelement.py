@@ -126,54 +126,6 @@ class XElement(Element):
         else:
             return [self.findall(path, namespaces) for path in paths]
 
-    # def iterbetween(self, start_at=None, start_after=None, end_before=None, end_after=None):
-    #     if start_at is not None and start_after is not None:
-    #         raise TypeError('Both start_at and start_after cannot be provided')
-    #     elif start_at is not None:
-    #         start = start_at
-    #         is_start_after = False
-    #     elif start_after is not None:
-    #         start = start_after
-    #         is_start_after = True
-    #     else:
-    #         is_start_after = False
-    #         start = self
-
-    #     if end_before is not None and end_after is not None:
-    #         raise TypeError('Both end_before and end_after cannot be provided')
-    #     elif end_before is not None:
-    #         end = end_before
-    #         is_end_before = True
-    #     elif end_after is not None:
-    #         end = end_after
-    #         is_end_before = False
-    #     else:
-    #         is_end_before = False
-    #         end = None
-
-    #     if isinstance(start, str):
-    #         start = self.find(start)
-    #     if isinstance(end, str):
-    #         end = self.find(end)
-
-    #     it = self.iterskip()
-    #     #print 'looking for start=', start
-    #     for e in it:
-    #         if e == start:
-    #             #print 'found start'
-    #             if is_start_after:
-    #                 #print 'skipping', e
-    #                 e = it.send(True) # skip this node and its children completely
-    #             yield e
-    #             for ee in it:
-    #                 #print 'testing ', ee
-    #                 if is_end_before and ee == end:
-    #                     return
-    #                 yield ee
-    #                 if ee is end:
-    #                     for eee in ee.iter():
-    #                         yield eee
-    #                     return
 
     def iterbetween(self, start_at=None, start_after=None, stop_before=None, stop_at=None, recurse=True):
         """ Same as `iter()`, excepts this method yields only the elements between the specified starting and ending nodes.
@@ -211,7 +163,17 @@ class XElement(Element):
             if e is stop_at_node:
                 break
 
-    def group( self, element_list, tag):
+    def group(self, element_list, tag):
+        """ Group the elements in `element_list` into a new XElement with tag `tag`.
+
+        Parameters:
+
+            element_list (list): List of XElements to group. If `element_list` is empty of is `None`, nothing is done.
+
+            tag (str): Tag of the new parent Xelement that contains the specified elements
+        """
+        if not element_list:
+            return
         for i,ee in enumerate(self):
             if ee is element_list[0]: break
         ne = XElement(tag)

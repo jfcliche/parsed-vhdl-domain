@@ -71,7 +71,7 @@ class VHDLDirective(ObjectDescription):  # which inherits from docutil's Directi
         super().__init__(name, arguments, options, *args)
         self.data = self.env.domaindata[VHDLDomain.name]
         self.vhdl_parser = self.env.domains[VHDLDomain.name].vhdl_parser
-
+        self.verbose = 0
 
     def handle_signature(self, sig, signode):
         """Parse the signature `sig` into individual nodes and append them to
@@ -89,7 +89,8 @@ class VHDLDirective(ObjectDescription):  # which inherits from docutil's Directi
             str: value that identifies the object, which will be passed to :meth:`add_target_and_index()`.
         """
         signode += nodes.paragraph('', f'{self.objtype.upper()} {sig}')
-        print(f'Processing signature {sig} into {signode}')
+        if self.verbose:
+            print(f'Processing signature {sig} into {signode}')
         return sig.lower()  # make all references lowercase so we we are not case sensitive
 
 
@@ -128,7 +129,8 @@ class VHDLDirective(ObjectDescription):  # which inherits from docutil's Directi
             self.indexnode['entries'].append((indextype, indexentry,
                                               targetname, '', None)) # Added 5th element for Sphinx 1.8
         objects = self.data['objects']
-        print(f'VHDL Domain: add_target_and_index: adding object type {self.objtype} named {name}, docname={self.env.docname}, targetname={targetname}')
+        if self.verbose:
+            print(f'VHDL Domain: add_target_and_index: adding object type {self.objtype} named {name}, docname={self.env.docname}, targetname={targetname}')
         objects[self.objtype, name] = self.env.docname, targetname
 
 
@@ -202,8 +204,10 @@ class VHDLIncludeDirective(VHDLDirective):
             *args: All other options passed to the parent's __init__
         """
         super().__init__(name, arguments, options, *args)
+        self.verbose = 0
 
-        print(f'Creating directive object named {self.name}, arg={self.arguments}, opt={self.options}')
+        if self.verbose:
+            print(f'Creating directive object named {self.name}, arg={self.arguments}, opt={self.options}')
         # Store the arguments and options specified with the directive. Those will be used by run()
         self.entity = arguments[0] # file name
         self.search_params = dict(
@@ -213,7 +217,8 @@ class VHDLIncludeDirective(VHDLDirective):
             end_after = options.get('end-after', None))
 
     def run(self):
-        print(f'Running vhdl:include with domain = {self.domain}, data={self.env.domains}')
+        if self.verbose:
+            print(f'Running vhdl:include with domain = {self.domain}, data={self.env.domains}')
         # parser = self.env.domaindata[VHDLDomain.name]['parser']
         lines = self.vhdl_parser.get_comments(self.entity, **self.search_params)
         if not lines:
@@ -277,6 +282,10 @@ class VHDLEntityDirective(VHDLDirective):
         brief_nodes = doc_utils.parse_comment_block(self.state, entity.brief, class_dict=dict(section='vhdl_entity_brief'))
         details_nodes = doc_utils.parse_comment_block(self.state, entity.details, class_dict=dict(section='vhdl_entity_details'))
         table_node = doc_utils.make_vhdl_entity_table(generics=entity.generics, ports=entity.ports)
+        for n in brief_nodes + [table_node] + details_nodes:
+            if '----' in n.astext():
+                # print(n.astext(), end='')
+                print(f'----------------Separator detected!----------------')
         return brief_nodes + [table_node] + details_nodes
 
 
@@ -352,17 +361,20 @@ class VHDLDomain(Domain):
 
         """
         super().__init__(env)
+        self.verbose = 0
         # self.data['parser'] = VHDLParser()
 
         # we create an instance of the parser within this domain instance.
         # In the directives, we access through the BuildEnvironment object as end.domains['vhdl].parser
         # We tried to put it in the data, but that gets pickled, and the pickle cannot digest the parser object.
         self.vhdl_parser = VHDLParser()
-        print(f'Created VHDL parser instance for domain {self.name} in environment {env}')
+        if self.verbose:
+            print(f'Created VHDL parser instance for domain {self.name} in environment {env}')
 
-    def clear_doc(self, docname):
+    def clear_doc(self, docname, verbose=0):
 
-        print(f'Clearing {self.name} domain data for docname={docname}')
+        if verbose:
+            print(f'Clearing {self.name} domain data for docname={docname}')
         if 'objects' in self.data:
             for key, (fn, _) in list(self.data['objects'].items()):
                 if fn == docname:

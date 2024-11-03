@@ -19,15 +19,33 @@ class XElement(Element):
     def __getattr__(self, name):
         if name in self.attrib:
             return self.attrib[name]
-        raise AttributeError(f'Element has no attribute {name}')
+        elif len(self):
+            return getattr(self[0], name)
+        else:
+            raise AttributeError(f'Element or leading subelement have no attribute {name}')
 
     def __setattr__(self, name, value):
-        if hasattr(self, name):
-            super().__setattr__(name, value)
-        else:
+        if name in self.attrib:
             self.attrib[name] = value
+        else:
+            super().__setattr__(name, value)
 
+    # @property
+    # def col(self):
+    #     """Get the col attribute of this element or from the first element of a sub-(sub-...) element
+    #     """
+    #     if 'col' in self.attrib:
+    #         return self.attrib['col']
+    #     elif len(self):
+    #         return self[0].col
+    #     else:
+    #         return None
 
+    # @col.setter
+    # def col(self, value):
+    #     """ Sets the col attribute on this element (not the subelement).The subelement col attribute is no longer returned unless col is set to None.
+    #     """
+    #     self.attrib['col'] = value
 
     @property
     def subtext(self):
@@ -126,6 +144,9 @@ class XElement(Element):
         else:
             return [self.findall(path, namespaces) for path in paths]
 
+    def findallbetween(self, tag, start_at=None, start_after=None, stop_before=None, stop_at=None, recurse=True):
+        return [e for e in self.iterbetween(start_at=start_at, start_after=start_after, stop_before=stop_before, stop_at=stop_at, recurse=recurse) if e.tag == tag]
+
 
     def iterbetween(self, start_at=None, start_after=None, stop_before=None, stop_at=None, recurse=True):
         """ Same as `iter()`, excepts this method yields only the elements between the specified starting and ending nodes.
@@ -143,24 +164,43 @@ class XElement(Element):
             - Both end options should not be provided. If so, stop_before will takes precedence over stop_at.
             - The end nodes should not appear before the start nodes
         """
-        start_at_node = self.find(start_at) if isinstance(start_at, str) else start_at
-        start_after_node = self.find(start_after) if isinstance(start_after, str) else start_after
-        stop_before_node = self.find(stop_before) if isinstance(stop_before, str) else stop_before
-        stop_at_node = self.find(stop_at) if isinstance(stop_at, str) else stop_at
+        if start_at is None:
+            start_at = tuple()
+        elif not isinstance(start_at, (list, tuple)):
+            start_at = (start_at,)
+        start_at_nodes = [self.find(n) if isinstance(n, str) else n for n in start_at]
 
-        started = False
+        if start_after is None:
+            start_after = tuple()
+        if not isinstance(start_after, (list, tuple)):
+            start_after = (start_after,)
+        start_after_nodes = [self.find(n) if isinstance(n, str) else n for n in start_after]
+
+        if stop_at is None:
+            stop_at = tuple()
+        if not isinstance(stop_at, (list, tuple)):
+            stop_at = (stop_at,)
+        stop_at_nodes = [self.find(n) if isinstance(n, str) else n for n in stop_at]
+
+        if stop_before is None:
+            stop_before = tuple()
+        if not isinstance(stop_before, (list, tuple)):
+            stop_before = (stop_before,)
+        stop_before_nodes = [self.find(n) if isinstance(n, str) else n for n in stop_before]
+
+        started = not start_at and not start_after
         for e in self.iter() if recurse else self:
-            if e is start_at_node:
+            if e in start_at_nodes:
                 started = True
-            if e is stop_before_node:
+            if started and e in stop_before_nodes:
                 break
 
             if started:
                 yield e
 
-            if e is start_after_node:
+            if e in start_after_nodes:
                 started = True
-            if e is stop_at_node:
+            if started and e in stop_at_nodes:
                 break
 
     def group(self, element_list, tag):
@@ -211,7 +251,7 @@ class XElement(Element):
                 self.remove(ee)
                 target_element.insert(index, ee)
         else:
-            raise ValueError(f'Index mist be either None, -1, or >= 0')
+            raise ValueError(f'Index must be either None, -1, or >= 0')
 
     def subtextbetween(self, start_at=None, start_after=None, end_before=None, end_after=None):
         """ Like `subtext()`, but only returns the contatenated text between the specified starting and ending elements, crossing hierarchy.

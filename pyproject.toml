@@ -19,7 +19,7 @@
         "sphinx",
         "sphinx_rtd_theme",
         "sphinxcontrib.restbuilder",  # used for debugging output
-        "vsg @ git+https://github.com/jfcliche/vhdl-style-guide.git@38bcc20171f2d65c01188e56a275e7f20caa9683"
+        "vsg @ git+https://github.com/jfcliche/vhdl-style-guide.git@2748e3a29385fd925b708570c0d13e34c162c3cd"
         ]
 
 [tool.setuptools.package-data]

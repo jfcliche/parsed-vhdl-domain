@@ -8,6 +8,15 @@ from docutils.statemachine import ViewList
 from docutils.utils.code_analyzer import Lexer, LexerError
 from docutils.utils import unescape
 
+WAVEDROM_HTML = """
+<div style="overflow-x:auto">
+<script type="WaveDrom">
+{content}
+</script>
+</div>
+"""
+
+
 def parse_rest(state, lines, class_dict={}):
     """ Parse a list of lines into a list of docutil nodes.
 
@@ -40,20 +49,23 @@ def parse_rest(state, lines, class_dict={}):
     return list(container_node)
 
 
-def parse_markdown_table(state, rows, pos):
-    """ Attempts to decode a block of text as a markdown table
+def parse_markdown_table(pos, lines):
+    """ Attempts to parse a block of text as a markdown table
+
+    Parameters:
+
+        pos (int): Line index from which markdown table decoding should be attempted
+
+        lines (list): list of strings containing the text to decode.
 
     Returns:
 
-        tuple or None: tuple ``(new position, docutils_table_node)`` returned if a markdown table was found,
-            and `None` is returned if there is no markdown table at this location.
+        tuple or None: Returns the  ``(new_pos, docutils_table_node_list)`` tuple if a markdown table was found, otherwise returns None.
     """
 
     # Define some helper functions first
-    def split_row(rows, pos):
-        if pos >= len(rows):
-            return []
-        e = [s.strip() for s in rows[pos].strip().split('|')]
+    def split_row(row):
+        e = [s.strip() for s in row.strip().split('|')]
         if len(e) < 2:
             return []
         if not e[0]:
@@ -61,6 +73,52 @@ def parse_markdown_table(state, rows, pos):
         if not e[-1]:
             del e[-1]
         return e
+
+    def skip_fence():
+        nonlocal pos, lines
+        if pos < len(lines) and lines[pos].strip().startswith('---'):  # if we have a top fence, skip it
+            pos += 1
+
+
+    # Parsing starts here
+    # print 'parsing Markdown table'
+    skip_fence()
+    if pos+2 >= len(lines):  # not enough lines for header and separator lines
+        return
+    headers = split_row(lines[pos])  # attempt to decode the header row
+    pos += 1
+    separators = split_row(lines[pos])
+    pos += 1
+    if not headers or not separators:
+        return  # bad separators = not a markdown table = give up
+    row_entries = []
+    while pos < len(lines):
+        entries = split_row(lines[pos])
+        # print 'row=', entries
+        if not entries:
+            break
+        row_entries.append(entries)
+        pos += 1
+    if not row_entries:
+        return # no rows? give up, not a markdon table
+    skip_fence()
+    return pos, headers, separators, row_entries
+
+def create_table_nodes(state, headers, separators, rows, verbose=0):
+    """ Converts a table specified as header row, separator rows and data rows into docutil nodes.
+
+
+    Parameters:
+
+        headers (list): list of string describing the header row
+
+        separators (list): list of strings describing the separator row
+
+    Returns:
+
+        list: List of Docutil nodes (currently a list containing a single nodes.table node)
+
+    """
 
     def build_row(entries, alignment):
         # return nodes.row('', *[nodes.entry('', nodes.inline('', e)) for e in entries])
@@ -75,42 +133,16 @@ def parse_markdown_table(state, rows, pos):
         return nodes.row('', *node_list)
 
     def max_column_widths(*rows):
+        """ Return the maximum width of each column. """
         widths = [0] * max(len(r) for r in rows)
         for row in rows:
             for i, entry in enumerate(row):
                 widths[i] = max(widths[i], len(entry))
         return widths
 
-    def skip_fence():
-        nonlocal pos, rows
-        if pos < len(rows) and rows[pos].strip().startswith('---'):  # if we have a top fence, skip it
-            pos += 1
-
-
-    # Parsing starts here
-    # print 'parsing Markdown table'
-    skip_fence()
-    headers = split_row(rows, pos)  # attempt to decode the header row
-    if not headers:
-        return # if unsuccessful, this is not a markdown table
-    # print 'header=', headers
-    pos += 1
-    separators = split_row(rows, pos)
-    if not separators:
-        return  # bad separators = not a markdown table = give up
-    # print 'separator=', separators
-    pos += 1
-    row_entries = []
-    while pos < len(rows):
-        entries = split_row(rows, pos)
-        # print 'row=', entries
-        if not entries:
-            break
-        row_entries.append(entries)
-        pos += 1
-    if not row_entries: return # no rows? give up, not a markdon table
-    print(('We have %i header columns, %i separator columns, %s row columns' % (len(headers), len(separators), ','.join('%i' % len(r) for r in row_entries))))
-    widths = max_column_widths(headers, separators, *row_entries)
+    if verbose:
+        print(f'We have {len(headers)} header columns, {len(separators)} separator columns, {len(rows[0])} data columns x {len(rows)}')
+    widths = max_column_widths(headers, separators, *rows)
     cols = len(widths)
 
     # print '*** widths=', widths
@@ -137,39 +169,144 @@ def parse_markdown_table(state, rows, pos):
     tbody = nodes.tbody()
     tgroup += tbody
     # print '*********** building table header'
-    assert len(headers) == cols, 'Headers has invalid number of columns. We expected %i columns, but got got headers: %s' % (cols, ','.join(headers))
+    assert len(headers) == cols, f'Header has invalid number of columns. We expected {cols} columns, but got {len(headers)} columns'
     thead += build_row(headers, align)
-    for r in row_entries:
-        assert len(r) == cols, 'Row has invalid number of columns'
-        tbody += build_row(r, align)
-    skip_fence()
-    return pos, table
+    for i,row in enumerate(rows):
+        assert len(row) == cols, f'Data row {i}  has invalid number of columns. We expected {cols} columns but {len(row)} columns'
+        tbody += build_row(row, align)
 
-def parse_comment_block(state, lines, class_dict={}):
+
+
+    # content = nodes.raw(text="allo les amis", format='html')
+    return [table]
+
+def create_wavedrom_reg_nodes(rows, verbose=0):
+   # if (self.env.app.builder.name in ('html', 'dirhtml', 'singlehtml') and self.config.wavedrom_html_jsinline):
+    wavedrom_code = """
+{reg:
+[
+  {bits: 1,  name: '-', attr: ['x'], type: 1},
+  {bits: 1,  name: '-', attr: ['x'], type: 1},
+  {bits: 1,  name: '-', attr: ['x'], type: 1},
+  {bits: 1,  name: '-', attr: ['x'], type: 1},
+  {bits: 1,  name: 'GPIOl0', attr: ['x'], type: 3},
+  {bits: 1,  name: '-', attr: ['x'], type: 1},
+  {bits: 1,  name: 'GPIOl2', attr: ['x'], type: 3},
+  {bits: 1,  name: 'GPIOl3', attr: ['x'], type: 3},
+],
+  config:{bits: 8}
+}"""
+
+    import re
+    page = 'None'
+    addr = 0
+    wavedrom_code = []
+    width = 1
+    words = {}  # {addr:{bit:name}}
+    for row in rows:
+        if row[0]:
+            page = row[0]
+        # extract address range
+        if row[1]:
+            addr = row[1]
+        #     addrs = re.split(r"\d+", row[1])
+        #     if len(addr) > 1:
+        #         a1, a2, *_ = addrs
+        #     else:
+        #         a1 = a2 = addrs[0]
+        #     addr_low = min(a1, a2)
+        #     addr_high = max(a1, a2)
+        if row[2]:  # extract bit range
+            bits = re.split(r"\D+", row[2])
+            if len(bits) > 1:
+                b1, b2, *_ = bits
+            else:
+                b1 = b2 = bits[0]
+            if verbose:
+                print(f'{page} {addr} {row[2]} {bits=} {b1=} {b2=}')
+            lsb = min(int(b1), int(b2))
+            msb = max(int(b1), int(b2))
+        name = row[3]
+        key = f'{page} {addr}'
+        word = words.setdefault(key,{})
+        for b in range(lsb, msb+1):
+            word[b] = name
+        # w = 8*(addr_high - addr_low + 1)
+        # if w > width:
+        #     width = w
+
+        # wd_line = f"\{bits: {nbits}, name: '{name}'\}"
+    if verbose:
+        print(f'{words=}')
+
+    word_lines = {}
+    for word_name, bits in words.items():
+        msb = max(bits.keys())
+        last_bit_name = None
+        width = 0
+        lines = word_lines.setdefault(word_name, [])
+        for b in range(msb+1):
+            bit_name = bits.get(b, '(unused)')
+            if not last_bit_name:
+                last_bit_name = bit_name
+                width = 1
+            elif last_bit_name == bit_name:
+                width += 1
+            else:
+                lines.append(f"{{bits: {width}, name: '{last_bit_name}'}}")
+                last_bit_name = bit_name
+                width = 1
+        lines.append(f"{{bits: {width}, name: '{last_bit_name}'}}")
+    if verbose:
+        print(f'{word_lines=}')
+    wavedrom_nodes = []
+    for word_name, lines in word_lines.items():
+        bit_strings = ',\n'.join(lines)
+        wavedrom_code = f'{{reg: [\n{bit_strings}\n], config: {{fontsize: 8}} }}'
+        if verbose:
+            print(f'{word_name} = {wavedrom_code}')
+        text = WAVEDROM_HTML.format(content=wavedrom_code)
+        wavedrom_nodes += nodes.inline(word_name, word_name)
+        wavedrom_nodes.append(nodes.raw(text=text, format='html'))
+    return wavedrom_nodes
+
+
+def parse_comment_block(state, lines, class_dict={}, verbose=0):
     """ Parse a block of ReStructuredText text into a node list, while also detecting and processing Markdown tables.
 
-    Arguments:
+    Parameters:
+
         state: parser state to be passed to the REST parser
+
         lines (list of str): text to be parsed as a list of str
+
         class_dict (dict): classes to be applied to the REST blocks
 
     Returns:
+
         list: list of ``docutils`` nodes represting the parsed text
     """
     pos = 0
     rest_lines = []
     node_list =[]
-
+    NL = '\n'
     while pos < len(lines):
-        markdown_table = parse_markdown_table(state, lines, pos)
+        # Attenpts to decode text as a markdown table
+        markdown_table =  parse_markdown_table(pos, lines)
         # print '*** Markdown table=', markdown_table
         if markdown_table:
-            print('VHDL Domain: A Markdown table was detected, parsed and added')
+            # parse lines preceding the table as normal RestructuredText
             node_list += parse_rest(state, rest_lines, class_dict)
-            rest_lines = []
-            (next_pos, table_node) = markdown_table
+            rest_lines.clear()
+            (next_pos, headers, separators, rows) = markdown_table
+            if verbose:
+                print(f'VHDL Domain: A Markdown table was detected, parsed and added\n{headers=}\n{separators=}\n{NL.join(str(r) for r in rows)}')
+            table_nodes = create_table_nodes(state, headers, separators, rows)
+            # wavedrom_nodes = create_wavedrom_reg_nodes(rows)
+
             # print 'Markdown table nodes = ', table_node
-            node_list.append(table_node)
+            node_list.extend(table_nodes)
+            # node_list.extend(wavedrom_nodes)
             node_list.append(nodes.paragraph('',''))  # make sure we don't interfere with following element
             pos = next_pos
         else:

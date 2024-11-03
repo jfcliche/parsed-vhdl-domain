@@ -110,7 +110,8 @@ class VHDLParser(XElement):
         line = 0
         for t in token_list:
             for prod in t.enter_prod:
-                ne = XElement(prod, col=col, line=line, is_prod=True)
+                # ne = XElement(prod, col=col, line=line, is_prod=True)
+                ne = XElement(prod, is_prod=True)
                 elem[-1].append(ne)
                 elem.append(ne)
             # if 1 or t.sub_token not in ('whitespace'):
@@ -128,8 +129,7 @@ class VHDLParser(XElement):
 
 
     def group_comments(self, et, verbose=0):
-        """ Scan the Element tree and group sequence of comments lines into ``comment_block`` or ``blank_line`` elements, and move those
-        elements within the entity they precede or trail.
+        """ Scan the Element tree and group sequence of comments lines into ``comment_block`` or ``blank_line`` elements.
 
         The provided element tree is modified in-place, but the text represented by the tree is unchanged.
 
@@ -150,7 +150,7 @@ class VHDLParser(XElement):
         delimited_comment = False  # True if we are inside a delimited comment
 
         for e in list(et): # make a copy so we can safely modify the tree in-place
-            self.print_debug(verbose, f"Comment processing {UL}{RED if e.get('is_prod') else ''}{e.tag}{NC} '{e.text!r}' @ line {e.get('line')} col {e.get('col')})")
+            self.print_debug(verbose, f"Comment processing {UL}{RED if e.get('is_prod') else ''}{e.tag}{NOCOLOR} '{e.text!r}' @ line {e.get('line')} col {e.get('col')})")
             # If we are in a comment block and get to the end
             if delimited_comment:
                 comment_line.append(e)
@@ -225,7 +225,14 @@ class VHDLParser(XElement):
     def move_header_comments(self, et, verbose=0):
         """ Scan the Element tree and move comments and spaces immediately before a production element into that element.
 
+        The provided element tree is modified in-place, but the text represented by the tree is unchanged.
+
         Assumes that comments have been grouped into comment blocks by :meth:``group_comments``.
+
+        Only ``comment_blocks`` starting on column 0 are moved. COmments blocks include the
+        indentation whitespace, so comments indented to any level are candidates, but not comments
+        appearing after any other statements (such as trailing comments).
+
 
         Parameters:
 
@@ -236,20 +243,22 @@ class VHDLParser(XElement):
         """
         header_elements = []  # accumulate header elements before moving them into the production element
         for e in list(et): # make a copy so we can safely modify the tree
-            self.print_debug(verbose, f"Header comment processing {e.tag} '{e.text!r}' @ ({e.get('line')}, {e.get('col')})")
-            if e.tag == 'comment_block': # restart list on the comment block. Only the last block gets moved.
+            self.print_debug(verbose, f"Header comment processing {e.tag} '{e.text!r}' @ ({e.line},{e.col})")
+            if e.tag == 'comment_block' and not e.col: # restart list on the comment block. Only the last block gets moved.
                 header_elements.clear()
                 header_elements.append(e)
-            elif e.tag in ('parser.whitespace', 'parser.blank_line', 'parser.carriage_return'):
+            elif e.tag == 'parser.whitespace' and not e.col:
+                header_elements.append(e)
+            elif e.tag in ('parser.whitespace', 'parser.blank_line', 'parser.carriage_return') and header_elements:
                 header_elements.append(e)
             elif e.tag == 'parser.comment':  # to be removed
-                self.print_debug(verbose, f"comment token!")
-                pp(e)
                 raise RuntimeError(' parser.comment tokens should not exist anymore')
-            elif e.get('is_prod'): # if we have a production element
-                self.move_header_comments(e) # recurse in production first so we don't move the comments again
-                et.move(header_elements, e, 0)
-                header_elements.clear()
+            elif e.get('is_prod'): # if we have a production element and
+                self.move_header_comments(e, verbose=verbose) # recurse in production first so we don't move the comments again
+                if header_elements:
+                    self.print_debug(verbose, f"{RED} Moving Header comment {''.join(ee.subtext for ee in header_elements)} @ ({header_elements[0].line}, {header_elements[0].col}) into {e.tag}{NOCOLOR}")
+                    et.move(header_elements, e, 0)
+                    header_elements.clear()
             else: # We have a non-comment token
                 header_elements.clear()
 
@@ -258,6 +267,8 @@ class VHDLParser(XElement):
 
         Assumes that comments have been grouped into comment blocks by :meth:``group_comments``.
 
+        The provided element tree is modified in-place, but the text represented by the tree is unchanged.
+
         Parameters:
 
             et (XElement): Element tree to process
@@ -265,29 +276,49 @@ class VHDLParser(XElement):
             verbose (int): if non-zero, prints debugging messages
 
         """
-        tail_elements = []  # accumulate tail elements before moving them into the production element
-        last_prod = None
+        tail_elements = []  # accumulate tail elements that will be moved into the preceding production element
+        last_prod = None #  production that can potentially receive the tail comment elements
         for e in list(et): # make a copy so we can safely modify the tree
-            self.print_debug(verbose, f"Tail comment processing {e.tag} '{e.text!r}' @ line {e.get('line')} col {e.get('col')})")
-            if e.tag in ('blank_line', 'parser.whitespace', 'parser.blank_line', 'parser.carriage_return'):
+            self.print_debug(verbose, f"Tail comment processing {e.tag} {e.subtext!r} @({e.line+1},{e.col+1}), last_prod={last_prod.tag if last_prod is not None else '?'}")
+            if last_prod is not None and (e.tag in ('parser.whitespace', 'parser.blank_line', 'parser.carriage_return') or e.text == ';'):
                 tail_elements.append(e)
-            elif e.text == ';':
+            elif last_prod is not None and e.tag == 'comment_block':
                 tail_elements.append(e)
-            else:
-                self.print_debug(verbose, f"  boundary element {e.tag} ")
-                if e.get('is_prod'):
-                    self.move_tail_comments(e, verbose=verbose) # recurse in production first so we don't move the comments again
-
-                if e.tag == 'comment_block':
-                    tail_elements.append(e)
-
-                if tail_elements and last_prod is not None:
-                    self.print_debug(verbose, f"  {RED} moving tail comment {tail_elements=} into {last_prod}{NC} ")
-                    et.move(tail_elements, last_prod)
-
+                self.print_debug(verbose, f"  {RED} moving tail comment {tail_elements=} into {last_prod}{NOCOLOR} ")
+                et.move(tail_elements, last_prod)
+                last_prod = None
                 tail_elements.clear()
-                last_prod = e if e.get('is_prod') else None
-                self.print_debug(verbose, f"  new {last_prod=} ")
+
+            elif e.get('is_prod'):
+                self.move_tail_comments(e, verbose=verbose) # recurse in production first so we don't move the comments again
+                last_prod = e
+                tail_elements.clear()
+            else:
+                last_prod = None
+                tail_elements.clear()
+
+
+            # last_prod = None
+            #         tail_elements.clear()
+            #     else:
+            #         last_prod = None
+            #         tail_elements.clear()
+            # else:
+            #     self.print_debug(verbose, f"  boundary element {e.tag} ")
+            #     if e.get('is_prod'):
+            #         self.move_tail_comments(e, verbose=verbose) # recurse in production first so we don't move the comments again
+            #         last_prod = e
+            #     # if last_prod is not None and tail_elements:
+            #     #     self.print_debug(verbose, f"  {RED} moving tail comment {tail_elements=} into {last_prod}{NOCOLOR} ")
+            #     #     et.move(tail_elements, last_prod)
+
+            #     # if e.tag == 'comment_block':
+            #     #     tail_elements.append(e)
+
+
+            #     tail_elements.clear()
+            #     last_prod = e if e.get('is_prod') else None
+            #     self.print_debug(verbose, f"  new {last_prod=} ")
 
 
 
@@ -312,7 +343,7 @@ class VHDLParser(XElement):
             ``filename=<current_filename>'`` whose children describe the parsed file.
         """
         if filename in self.files:
-            print("Warning: File '{filename}' has already been parsed. Ignoring." )
+            print(f"{self!r}: Warning: File '{filename}' has already been parsed. Ignoring." )
             return self.files[filename]
         # Load the VHDL file
         with open(filename, 'r') as file:
@@ -476,9 +507,12 @@ class VHDLParser(XElement):
             #         interface_list.append(Namespace(names=[], definition=None, comments=comments))
             # print(f'testing {elem.tag}={elem.text!r}')
             if elem.tag == 'interface_unknown_declaration':
+                header_comment_elems = elem.findallbetween('comment_block', stop_before='interface_unknown_declaration.identifier')
+                tail_comment_elems = elem.findallbetween('comment_block', start_after='interface_unknown_declaration.identifier')
+                # first_tail_comment_elem = tail_comment_elems[0] if tail_comment_elems else None
                 name_list = [ n.subtext for n in elem.findall('interface_unknown_declaration.identifier')]
-                definition = elem.subtextbetween(start_after='interface_unknown_declaration.colon', end_before='comment_block')
-                comments = ';'.join(n.subtext for n in elem.findall('comment_block'))
+                definition = elem.subtextbetween(start_after='interface_unknown_declaration.colon', end_before=['interface_list.semicolon'] + tail_comment_elems)
+                comments = '\n'.join(ee.subtext for ee in header_comment_elems + tail_comment_elems)
                 interface_list.append(Namespace(names=name_list, definition=definition, comments=comments))
             elif elem.tag == 'comment_block':
                 comments = elem.subtext
@@ -680,7 +714,7 @@ class VHDLParser(XElement):
                     matching_lines.append(s)
                 if match(s, start_after):
                     capture = True
-                    print(f'Found match after {start_after}')
+                    print(f'Found match after {start_after} in entity {entity}')
                 if match(s, end_after):
                     break
             if matching_lines:  # stop at the end of this block if we found anything in it
@@ -705,7 +739,7 @@ def pp(elem, level=0, collapse=(), max_depth=0, width=80):
     collapsed_str = '(collapsed) ' if collapsed else ''
     text = ('' if len(elem) and not collapsed else repr(elem.subtext))[:width]
     tag = f'<{elem.tag}>' if elem.tag != '_' else ''
-    print(f'{indent}{tag}({id(elem):x}) {collapsed_str}{text}')
+    print(f"{indent}{tag}({id(elem):x}) {collapsed_str}{text} @({elem.line+1},{elem.col+1})")
 
         #print  '%s%s' % ('   '*(level+1), )
     if not collapsed:
